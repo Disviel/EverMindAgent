@@ -121,7 +121,7 @@ export interface ActorEventSource {
    * @param events - The events to emit.
    * @returns True if the event was emitted, false otherwise.
    */
-  emit(event: "output", ...data: ActorMessageEvent[]): boolean;
+  emit(event: "output", ...events: ActorMessageEvent[]): boolean;
 }
 
 import type { Expect, Is } from "../types";
