@@ -18,3 +18,53 @@ export interface EmaLLMClient {
 
 // TODO: definition of tools.
 export type Tool = any;
+
+/**
+ * {@link Agent} is a background-running thread that communicates with the actor.
+ */
+export interface Agent {
+  S: typeof AgentScheReqFactory;
+
+  /**
+   * Runs the agent.
+   *
+   * @returns void
+   */
+  run(scheReq: AgentScheRequest): Promise<void>;
+}
+
+interface AgentState {
+  memoryBuffer: Message[];
+}
+
+type AgentScheRequest = AgentScheMessageRequest | AgentScheStateCallbackRequest;
+
+interface AgentScheMessageRequest {
+  kind: "msg";
+  message: Message;
+}
+
+type AgentScheStateCallback = (state: AgentState) => void;
+
+interface AgentScheStateCallbackRequest {
+  kind: "stateCb";
+  stateCallback: AgentScheStateCallback;
+}
+
+export class AgentScheReqFactory {
+  static withMessage(message: Message): AgentScheMessageRequest {
+    return {
+      kind: "msg",
+      message,
+    };
+  }
+
+  static withStateCallback(
+    stateCallback: AgentScheStateCallback,
+  ): AgentScheStateCallbackRequest {
+    return {
+      kind: "stateCb",
+      stateCallback,
+    };
+  }
+}
