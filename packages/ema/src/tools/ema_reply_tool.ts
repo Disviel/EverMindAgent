@@ -6,7 +6,6 @@ const EmaReplySchema = z
   .object({
     think: z
       .string()
-      .trim()
       .min(1)
       .describe("内心独白或心里想法，语气可口语化，不直接说给对方听"),
     expression: z
@@ -17,7 +16,6 @@ const EmaReplySchema = z
       .describe("肢体动作"),
     response: z
       .string()
-      .trim()
       .min(1)
       .describe("说出口的内容，直接传达给用户的话语"),
   })
