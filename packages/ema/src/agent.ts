@@ -5,7 +5,6 @@ import cl100k_base from "js-tiktoken/ranks/cl100k_base";
 
 import type { LLMClient } from "./llm";
 import { AgentConfig } from "./config";
-import { AgentLogger } from "./logger";
 import { RetryExhaustedError } from "./retry";
 import {
   type LLMResponse,
@@ -514,8 +513,6 @@ export class Agent {
   events: AgentEventsEmitter = new AgentEventsEmitter();
   /** Manages conversation context, history, and available tools. */
   contextManager: ContextManager;
-  /** Logger instance used for agent-related logging. */
-  logger: AgentLogger;
 
   constructor(
     /** Configuration for the agent. */
@@ -537,9 +534,6 @@ export class Agent {
       messages,
       tools,
     );
-
-    // Initialize logger
-    this.logger = new AgentLogger();
   }
 
   /** Execute agent loop until task is complete or max steps reached. */

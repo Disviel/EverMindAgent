@@ -9,6 +9,7 @@ import {
 import type { Mongo } from "../../db";
 import { ActorWorker } from "../../actor";
 import { Config } from "../../config";
+import { ActorLogger } from "../../logger/actor_logger";
 import * as lancedb from "@lancedb/lancedb";
 
 const describeLLM = describe.runIf(
@@ -46,6 +47,7 @@ describeLLM("MemorySkill", () => {
     const searcher = new LanceMemoryVectorSearcher(mongo, lance);
     worker = new ActorWorker(
       Config.load(),
+      new ActorLogger("console", "none"),
       1,
       new MongoActorDB(mongo),
       new MongoShortTermMemoryDB(mongo),

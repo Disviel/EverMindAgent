@@ -16,6 +16,7 @@ import type {
   ActorMemory,
 } from "./skills/memory";
 import { LLMClient } from "./llm";
+import { ActorLogger } from "./logger/actor_logger";
 
 /**
  * A facade of the actor functionalities between the server (system) and the agent (actor).
@@ -33,6 +34,8 @@ export class ActorWorker implements ActorStateStorage, ActorMemory {
   constructor(
     /** The config of the actor. */
     private readonly config: Config,
+    /** The logger for actor events. */
+    private readonly actorLogger: ActorLogger,
     /** The ID of the actor. */
     private readonly actorId: number,
     /** The database of the actor. */
@@ -80,7 +83,7 @@ export class ActorWorker implements ActorStateStorage, ActorMemory {
     const input = inputs[0] as ActorTextInput;
     this.emitEvent({
       type: "message",
-      content: `Received input: ${input.content}. Start running.`,
+      content: `Received input: ${input.content}`,
     });
 
     // push user input into the agent context
@@ -152,6 +155,7 @@ export class ActorWorker implements ActorStateStorage, ActorMemory {
   private emitEvent(event: ActorEvent) {
     this.eventStream.push(event);
     this.broadcast("running");
+    this.actorLogger.logActorEvents(event, "info");
   }
 
   /**

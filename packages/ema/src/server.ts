@@ -33,6 +33,7 @@ import type { Fs } from "./fs";
 import { RealFs } from "./fs";
 import * as path from "node:path";
 import { ActorWorker } from "./actor";
+import { ActorLogger } from "./logger/actor_logger";
 
 /**
  * The server class for the EverMemoryArchive.
@@ -218,6 +219,7 @@ export class Server {
     if (!actor) {
       actor = new ActorWorker(
         this.config,
+        new ActorLogger("console", "debug"), // TODO: may use this.config rather than logger instance
         actorId,
         this.actorDB,
         this.shortTermMemoryDB,

@@ -3,6 +3,7 @@ import { stdin as input, stdout as output } from "node:process";
 import { AgentEvents, type AgentEventContent } from "./agent";
 import { ToolResult } from "./tools/base";
 import { Config } from "./config";
+import { ActorLogger } from "./logger/actor_logger";
 import type {
   ActorDB,
   ActorEntity,
@@ -90,6 +91,7 @@ async function main(): Promise<void> {
   const actorId = 1;
   const actor = new ActorWorker(
     Config.load(),
+    new ActorLogger("console", "debug"),
     actorId,
     new InMemoryActorDB(),
     new InMemoryShortTermMemoryDB(),
@@ -98,12 +100,13 @@ async function main(): Promise<void> {
   );
 
   actor.subscribe((response) => {
-    const last = response.events.at(-1);
-    if (isAgentEvent(last, AgentEvents.emaReplyReceived)) {
-      const reply = last.content.reply;
-      console.log(`[${reply.expression}][${reply.action}](${reply.think})`);
-      console.log(`EMA > ${reply.response}`);
-    }
+    // const last = response.events.at(-1);
+    // if (last?.type === AgentEvents.runFinished) {
+    //   console.log(
+    //     "[run Finished] ",
+    //     (last.content as AgentEventContent<"runFinished">).msg,
+    //   );
+    // }
   });
 
   const rl = readline.createInterface({ input, output });
