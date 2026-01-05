@@ -48,7 +48,7 @@ describe("MongoActorDB with in-memory MongoDB", () => {
     const updatedActor: ActorEntity = {
       id,
       ...actorData,
-      memoryBuffer: [{ role: "user", content: "Hello" }],
+      memoryBuffer: [{ role: "user", contents: [{ type: "text",  text: "Hello"}] }],
       updatedAt: Date.now(),
     };
 
@@ -137,14 +137,14 @@ describe("MongoActorDB with in-memory MongoDB", () => {
     };
     const actor2: ActorEntity = {
       roleId: 1,
-      memoryBuffer: [{ role: "user", content: "Hello" }],
+      memoryBuffer: [{ role: "user", contents: [{ type: "text",  text: "Hello"}] }],
       updatedAt: Date.now(),
     };
     const actor3: ActorEntity = {
       roleId: 2,
       memoryBuffer: [
-        { role: "user", content: "Hello" },
-        { role: "assistant", content: "Hi there!" },
+        { role: "user", contents: [{ type: "text",  text: "Hello"}] },
+        { role: "model", contents: [{ type: "text",  text: "Hi there!" }] },
       ],
       updatedAt: Date.now(),
     };
@@ -176,7 +176,7 @@ describe("MongoActorDB with in-memory MongoDB", () => {
     // Update
     const updatedActor: ActorEntity = {
       ...actorData,
-      memoryBuffer: [{ role: "user", content: "Hello" }],
+      memoryBuffer: [{ role: "user", contents: [{ type: "text",  text: "Hello"}] }],
       updatedAt: Date.now(),
     };
     await db.upsertActor(updatedActor);

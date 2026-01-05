@@ -26,7 +26,7 @@ describe("MongoConversationMessageDB with in-memory MongoDB", () => {
   test("should add a conversation message", async () => {
     const messageData: ConversationMessageEntity = {
       conversationId: 1,
-      message: { role: "user", content: "Hello" },
+      message: { role: "user", contents: [{ type: "text",  text: "Hello"}] },
       createdAt: Date.now(),
     };
 
@@ -38,7 +38,7 @@ describe("MongoConversationMessageDB with in-memory MongoDB", () => {
   test("should delete a conversation message", async () => {
     const messageData: ConversationMessageEntity = {
       conversationId: 1,
-      message: { role: "user", content: "Hello" },
+      message: { role: "user", contents: [{ type: "text",  text: "Hello"}] },
       createdAt: Date.now(),
     };
 
@@ -58,7 +58,7 @@ describe("MongoConversationMessageDB with in-memory MongoDB", () => {
   test("should return false when deleting already deleted message", async () => {
     const messageData: ConversationMessageEntity = {
       conversationId: 1,
-      message: { role: "user", content: "Hello" },
+      message: { role: "user", contents: [{ type: "text",  text: "Hello"}] },
       createdAt: Date.now(),
     };
 
@@ -74,17 +74,17 @@ describe("MongoConversationMessageDB with in-memory MongoDB", () => {
   test("should not list deleted messages", async () => {
     const msg1: ConversationMessageEntity = {
       conversationId: 1,
-      message: { role: "user", content: "Hello" },
+      message: { role: "user", contents: [{ type: "text",  text: "Hello"}] },
       createdAt: Date.now(),
     };
     const msg2: ConversationMessageEntity = {
       conversationId: 1,
-      message: { role: "assistant", content: "Hi there!" },
+      message: { role: "model", contents: [{ type: "text",  text: "Hi there!" }] },
       createdAt: Date.now(),
     };
     const msg3: ConversationMessageEntity = {
       conversationId: 2,
-      message: { role: "user", content: "How are you?" },
+      message: { role: "user", contents: [{ type: "text",  text: "How are you?" }] },
       createdAt: Date.now(),
     };
 
@@ -110,17 +110,17 @@ describe("MongoConversationMessageDB with in-memory MongoDB", () => {
   test("should list messages filtered by conversationId", async () => {
     const msg1: ConversationMessageEntity = {
       conversationId: 1,
-      message: { role: "user", content: "Hello" },
+      message: { role: "user", contents: [{ type: "text",  text: "Hello"}] },
       createdAt: Date.now(),
     };
     const msg2: ConversationMessageEntity = {
       conversationId: 1,
-      message: { role: "assistant", content: "Hi there!" },
+      message: { role: "model", contents: [{ type: "text",  text: "Hi there!" }] },
       createdAt: Date.now(),
     };
     const msg3: ConversationMessageEntity = {
       conversationId: 2,
-      message: { role: "user", content: "How are you?" },
+      message: { role: "user", contents: [{ type: "text",  text: "How are you?" }] },
       createdAt: Date.now(),
     };
 
@@ -139,28 +139,27 @@ describe("MongoConversationMessageDB with in-memory MongoDB", () => {
   test("should handle messages with different content types", async () => {
     const msg1: ConversationMessageEntity = {
       conversationId: 1,
-      message: { role: "user", content: "Hello" },
+      message: { role: "user", contents: [{ type: "text",  text: "Hello"}] },
       createdAt: Date.now(),
     };
     const msg2: ConversationMessageEntity = {
       conversationId: 1,
       message: {
-        role: "assistant",
-        content: "Hi there!",
-        thinking: "I should respond politely",
+        role: "model",
+        contents: [{ type: "text",  text: "Hi there!" }],
       },
       createdAt: Date.now(),
     };
     const msg3: ConversationMessageEntity = {
       conversationId: 1,
       message: {
-        role: "assistant",
-        content: "Let me help you",
-        tool_calls: [
+        role: "model",
+        contents: [{ type: "text",  text: "Let me help you" }],
+        toolCalls: [
           {
             id: "call-1",
-            type: "function",
-            function: { name: "search", arguments: { query: "test" } },
+            name: "function",
+            args: { query: "test" },
           },
         ],
       },
@@ -184,7 +183,7 @@ describe("MongoConversationMessageDB with in-memory MongoDB", () => {
     // Create (Add)
     const messageData: ConversationMessageEntity = {
       conversationId: 1,
-      message: { role: "user", content: "Hello" },
+      message: { role: "user", contents: [{ type: "text",  text: "Hello"}] },
       createdAt: Date.now(),
     };
     await db.addConversationMessage(messageData);
