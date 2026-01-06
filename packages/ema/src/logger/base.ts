@@ -4,10 +4,11 @@ import type {
   ToolMessage,
   UserMessage,
 } from "../schema";
-import type { ActorEvent } from "../actor";
+import type { AgentEventContent } from "../agent";
 
 export type LoggerMode = "console" | "file" | "database";
-export type LogLevel = "none" | "debug" | "info" | "warn" | "error";
+export type LoggerLevel = "none" | "full" | "debug" | "info" | "warn" | "error";
+export type LogLevel = "debug" | "info" | "warn" | "error";
 
 const colors = {
   dim: "\u001b[2m",
@@ -19,7 +20,6 @@ const colors = {
 };
 
 const levelColor: Record<LogLevel, string> = {
-  none: colors.dim,
   debug: colors.blue,
   info: colors.green,
   warn: colors.yellow,
@@ -37,41 +37,46 @@ export interface LogRecord {
 export abstract class LoggerBase {
   readonly name: string;
   protected readonly modes: LoggerMode[];
-  protected readonly level: LogLevel;
+  protected readonly level: LoggerLevel;
 
   constructor(
     name: string,
     mode: LoggerMode | LoggerMode[] = "console",
-    level: LogLevel = "info",
+    level: LoggerLevel = "debug",
   ) {
     this.name = name;
     this.modes = Array.isArray(mode) ? mode : [mode];
     this.level = level;
   }
 
-  async log(record: LogRecord): Promise<void> {
+  private async logRecord(record: LogRecord): Promise<void> {
     if (!this.shouldLog(record.level)) {
       return;
     }
     await Promise.all(this.modes.map((mode) => this.dispatch(mode, record)));
   }
 
-  protected async logMessage(
-    payload: Omit<LogRecord, "timestamp" | "logger"> & { logger?: string },
+  public async log(
+    level: LogLevel,
+    message: string,
+    data?: any,
   ): Promise<void> {
     const record: LogRecord = {
       timestamp: new Date().toISOString(),
-      logger: payload.logger ?? this.name,
-      ...payload,
+      logger: this.name,
+      level,
+      message,
+      data,
     };
-    await this.log(record);
+    await this.logRecord(record);
   }
 
   protected shouldLog(level: LogLevel): boolean {
-    if (this.level === "none" || level === "none") {
+    if (this.level === "none") {
       return false;
     }
-    const order: Record<LogLevel, number> = {
+    const order: Record<LoggerLevel, number> = {
+      full: 0,
       debug: 10,
       info: 20,
       warn: 30,
@@ -103,19 +108,12 @@ export abstract class LoggerBase {
     const header =
       `${colors.dim}[${record.timestamp}]${colors.reset}` +
       `${levelColor[record.level]}[${record.level}]${colors.reset}` +
-      `${colors.green}[${record.logger}]${colors.reset} ` +
+      `${colors.green}[${record.logger}]${colors.reset}` +
       `${colors.blue}${record.message}${colors.reset}`;
-
-    if (
-      this.level === "debug" &&
-      record.data &&
-      Object.keys(record.data).length > 0
-    ) {
-      console.log(header);
-      console.log(record.data);
-      return;
-    }
     console.log(header);
+    if (record.data && this.level === "full") {
+      console.log(record.data);
+    }
   }
 
   protected writeFile(_record: LogRecord): void {
@@ -127,8 +125,33 @@ export abstract class LoggerBase {
   }
 }
 
-export interface ActorLoggerInterface {
-  logActorEvents(event: ActorEvent, level: LogLevel): Promise<void>;
+export interface AgentLoggerInterface {
+  logTokenEstimationFallbacked(
+    content: AgentEventContent<"tokenEstimationFallbacked">,
+  ): Promise<void>;
+  logSummarizeMessagesStarted(
+    content: AgentEventContent<"summarizeMessagesStarted">,
+  ): Promise<void>;
+  logSummarizeMessagesFinished(
+    content: AgentEventContent<"summarizeMessagesFinished">,
+  ): Promise<void>;
+  logCreateSummaryFinished(
+    content: AgentEventContent<"createSummaryFinished">,
+  ): Promise<void>;
+  logStepStarted(content: AgentEventContent<"stepStarted">): Promise<void>;
+  logRunFinished(content: AgentEventContent<"runFinished">): Promise<void>;
+  logLLMResponseReceived(
+    content: AgentEventContent<"llmResponseReceived">,
+  ): Promise<void>;
+  logToolCallStarted(
+    content: AgentEventContent<"toolCallStarted">,
+  ): Promise<void>;
+  logToolCallFinished(
+    content: AgentEventContent<"toolCallFinished">,
+  ): Promise<void>;
+  logEMARplyReceived(
+    content: AgentEventContent<"emaReplyReceived">,
+  ): Promise<void>;
 }
 
 export interface ContextLoggerInterface {

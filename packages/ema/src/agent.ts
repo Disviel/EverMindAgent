@@ -19,6 +19,7 @@ import {
 } from "./schema";
 import { Tool, ToolResult } from "./tools/base";
 import { EmaReplyTool, type EmaReply } from "./tools/ema_reply_tool";
+import { AgentLogger } from "./logger/agent_logger";
 
 const AgentEventDefs = {
   /* Emitted when token estimation falls back to the simple method. */
@@ -513,6 +514,8 @@ export class Agent {
   events: AgentEventsEmitter = new AgentEventsEmitter();
   /** Manages conversation context, history, and available tools. */
   contextManager: ContextManager;
+  /** Logger for agent events and actions. */
+  logger: AgentLogger = new AgentLogger("console", "full");
 
   constructor(
     /** Configuration for the agent. */
@@ -586,17 +589,17 @@ export class Agent {
         });
       } catch (error) {
         if (error instanceof RetryExhaustedError) {
-          const errorMsg =
-            `LLM call failed after ${error.attempts} retries\n` +
-            `Last error: ${String(error.lastException)}`;
+          const errorMsg = `LLM call failed after ${error.attempts} retries. Last error: ${String(error.lastException)}`;
           // console.log(
           //   `\n${Colors.BRIGHT_RED}❌ Retry failed:${Colors.RESET} ${errorMsg}`,
           // );
-          this.events.emit(AgentEvents.runFinished, {
+          const content = {
             ok: false,
             msg: errorMsg,
             error: error as RetryExhaustedError,
-          });
+          };
+          this.events.emit(AgentEvents.runFinished, content);
+          this.logger.logRunFinished(content);
           return;
         }
         // const errorMsg = `LLM call failed: ${(error as Error).message}`;
@@ -605,7 +608,7 @@ export class Agent {
         // );
         this.events.emit(AgentEvents.runFinished, {
           ok: false,
-          msg: `LLM call failed.`,
+          msg: `LLM call failed: ${(error as Error).message}`,
           error: error as Error,
         });
         return;
@@ -729,17 +732,25 @@ export class Agent {
           // console.log(
           //   `${Colors.BRIGHT_GREEN}✓ Result:${Colors.RESET} ${resultText}`,
           // );
-          this.events.emit(AgentEvents.toolCallFinished, {
-            ok: true,
-            toolCallId: toolCallId ?? "",
-            functionName: functionName,
-            result: result,
-          });
           if (functionName === "ema_reply" && result.success) {
-            this.events.emit(AgentEvents.emaReplyReceived, {
-              reply: JSON.parse(result.content!),
-            });
+            const reply = JSON.parse(result.content!);
             result.content = undefined;
+            this.events.emit(AgentEvents.toolCallFinished, {
+              ok: true,
+              toolCallId: toolCallId ?? "",
+              functionName: functionName,
+              result: result,
+            });
+            this.events.emit(AgentEvents.emaReplyReceived, {
+              reply: reply,
+            });
+          } else {
+            this.events.emit(AgentEvents.toolCallFinished, {
+              ok: true,
+              toolCallId: toolCallId ?? "",
+              functionName: functionName,
+              result: result,
+            });
           }
         } else {
           // console.log(

@@ -16,7 +16,6 @@ import type {
   ActorMemory,
 } from "./skills/memory";
 import { LLMClient } from "./llm";
-import { ActorLogger } from "./logger/actor_logger";
 
 /**
  * A facade of the actor functionalities between the server (system) and the agent (actor).
@@ -34,8 +33,6 @@ export class ActorWorker implements ActorStateStorage, ActorMemory {
   constructor(
     /** The config of the actor. */
     private readonly config: Config,
-    /** The logger for actor events. */
-    private readonly actorLogger: ActorLogger,
     /** The ID of the actor. */
     private readonly actorId: number,
     /** The database of the actor. */
@@ -155,7 +152,6 @@ export class ActorWorker implements ActorStateStorage, ActorMemory {
   private emitEvent(event: ActorEvent) {
     this.eventStream.push(event);
     this.broadcast("running");
-    this.actorLogger.logActorEvents(event, "info");
   }
 
   /**
@@ -268,6 +264,13 @@ export type ActorStatus = "running" | "idle";
  * A event from the actor.
  */
 export type ActorEvent = ActorMessage | AgentEvent;
+
+/**
+ * Type guard that narrows an actor event to an actor message.
+ */
+export function isActorMessage(event: ActorEvent): event is ActorMessage {
+  return event.type === "message";
+}
 
 /**
  * Type guard that narrows an actor event to a specific agent event (or any agent event).

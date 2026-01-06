@@ -3,7 +3,6 @@ import { stdin as input, stdout as output } from "node:process";
 import { AgentEvents, type AgentEventContent } from "./agent";
 import { ToolResult } from "./tools/base";
 import { Config } from "./config";
-import { ActorLogger } from "./logger/actor_logger";
 import type {
   ActorDB,
   ActorEntity,
@@ -91,7 +90,6 @@ async function main(): Promise<void> {
   const actorId = 1;
   const actor = new ActorWorker(
     Config.load(),
-    new ActorLogger("console", "debug"),
     actorId,
     new InMemoryActorDB(),
     new InMemoryShortTermMemoryDB(),

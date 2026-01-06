@@ -1,3 +1,6 @@
+import { LoggerBase } from "./logger/base";
+import { RetryLogger } from "./logger/retry_logger";
+
 /**
  * Elegant retry mechanism module
  *
@@ -37,17 +40,18 @@ export class RetryConfig {
      */
     // public readonly retryable_exceptions: Array<typeof Error> = [Error],
   ) {}
+}
 
-  /**
-   * Calculate delay time (exponential backoff)
-   *
-   * @param attempt - Current attempt number (starting from 0)
-   * @returns Delay time (seconds)
-   */
-  public calculateDelay(attempt: number): number {
-    const delay = this.initial_delay * Math.pow(this.exponential_base, attempt);
-    return Math.min(delay, this.max_delay);
-  }
+/**
+ * Calculate delay time (exponential backoff)
+ *
+ * @param attempt - Current attempt number (starting from 0)
+ * @returns Delay time (seconds)
+ */
+function calculateDelay(config: RetryConfig, attempt: number): number {
+  const delay =
+    config.initial_delay * Math.pow(config.exponential_base, attempt);
+  return Math.min(delay, config.max_delay);
 }
 
 export class RetryExhaustedError extends Error {
@@ -63,6 +67,8 @@ export class RetryExhaustedError extends Error {
     this.attempts = attempts;
   }
 }
+
+const logger = new RetryLogger("console", "warn");
 
 /**
  * Async function retry decorator.
@@ -91,13 +97,15 @@ export function asyncRetry(
         } catch (exception) {
           lastException = exception as Error;
           if (attempt >= config.max_retries) {
-            console.error(
+            logger.log(
+              "error",
               `Function ${propertyKey} retry failed, reached maximum retry count ${config.max_retries}`,
             );
             throw new RetryExhaustedError(lastException, attempt + 1);
           }
-          const delay = config.calculateDelay(attempt);
-          console.warn(
+          const delay = calculateDelay(config, attempt);
+          logger.log(
+            "warn",
             `Function ${propertyKey} call ${attempt + 1} failed: ${lastException.message}, retrying attempt ${attempt + 2} after ${delay.toFixed(2)} seconds`,
           );
           // Call callback function
