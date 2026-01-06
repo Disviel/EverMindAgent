@@ -2,6 +2,7 @@ import coreSidebar from "../core/typedoc-sidebar.json";
 import httpSidebar from "../http/typedoc-sidebar.json";
 
 export default {
+  base: '/EverMindAgent/',
   lang: "en-US",
   title: "EverMemoryArchive",
   description:
