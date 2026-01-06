@@ -128,7 +128,8 @@ export abstract class Agent<S extends AgentState = AgentState> {
 export interface AgentEventMap {
   // todo: agent events. maybe:
   // 1. agent output
-  // 2. special agent event, for example, we can define "memory:reorgnize" to tell other components the agent is reorgnizing memory.
+  // 2. special agent event, for example, we can define "memory:reorganize" to tell other components the agent is
+  // reorganizing memory.
 }
 
 export interface AgentTask<S extends AgentState = AgentState> {
