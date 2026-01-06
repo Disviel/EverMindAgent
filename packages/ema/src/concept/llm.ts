@@ -87,31 +87,19 @@ export abstract class Agent<S extends AgentState = AgentState> {
   /**
    * Checks if the agent is running a LLM session.
    *
-   * @param agent - The agent to check.
    * @returns Whether the agent is running.
    */
   abstract isRunning(): boolean;
   /**
    * Stops the running session unconditionally.
    *
-   * @param agent - The agent to stop.
    */
   abstract stop(): Promise<void>;
 
   /**
-   * Runs the agent with a state callback. The agent will ensure that it is idle when the callback is called.
-   *
-   * See {@link AgentStateCallback} for examples.
-   *
-   * @param stateCallback - The state callback to run the agent with.
-   * @returns void
-   */
-  abstract run(stateCallback: AgentStateCallback<S>): Promise<void>;
-
-  /**
    * Runs the agent with a user message.
    *
-   * @param message - The message to run the agent with.
+   * @param message - The message to add.
    * @returns void
    */
   runWithMessage(message: Message): Promise<void> {
@@ -121,6 +109,16 @@ export abstract class Agent<S extends AgentState = AgentState> {
       return s;
     });
   }
+
+  /**
+   * Runs the agent with a state callback. The agent will ensure that it is idle when the callback is called.
+   *
+   * See {@link AgentStateCallback} for examples.
+   *
+   * @param stateCallback - The state callback to run the agent with.
+   * @returns Promise resolving when the agent is idle.
+   */
+  abstract run(stateCallback: AgentStateCallback<S>): Promise<void>;
 }
 
 /**
