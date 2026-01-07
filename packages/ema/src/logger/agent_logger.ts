@@ -102,7 +102,7 @@ export class AgentLogger extends LoggerBase implements AgentLoggerInterface {
     await this.log(level, message, content);
   }
 
-  async logEMARplyReceived(
+  async logEMAReplyReceived(
     content: AgentEventContent<"emaReplyReceived">,
   ): Promise<void> {
     const level: LogLevel = "debug";
@@ -148,7 +148,7 @@ export class AgentLogger extends LoggerBase implements AgentLoggerInterface {
           content as AgentEventContent<"toolCallFinished">,
         );
       case "emaReplyReceived":
-        return this.logEMARplyReceived(
+        return this.logEMAReplyReceived(
           content as AgentEventContent<"emaReplyReceived">,
         );
     }

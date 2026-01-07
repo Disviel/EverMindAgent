@@ -149,7 +149,7 @@ export interface AgentLoggerInterface {
   logToolCallFinished(
     content: AgentEventContent<"toolCallFinished">,
   ): Promise<void>;
-  logEMARplyReceived(
+  logEMAReplyReceived(
     content: AgentEventContent<"emaReplyReceived">,
   ): Promise<void>;
   logAgentEvent(

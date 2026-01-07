@@ -31,7 +31,7 @@ export class ActorWorker implements ActorStateStorage, ActorMemory {
   /** The event stream of the actor. */
   private eventStream = new EventHistory();
   /** The logger of the actor. */
-  private readonly logger: ActorLogger = new ActorLogger("console", "full");
+  private readonly logger: ActorLogger = new ActorLogger("console", "debug");
 
   constructor(
     /** The config of the actor. */
