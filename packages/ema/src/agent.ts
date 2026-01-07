@@ -538,13 +538,8 @@ export class Agent {
           this.contextManager.context.tools,
           this.systemPrompt,
         );
-        this.events.emit(
-          AgentEvents.llmResponseReceived,
-          {
-            response: response,
-          },
-          this.logger,
-        );
+        // Log LLM response received event
+        this.logger.logLLMResponseReceived({ response: response });
       } catch (error) {
         if (error instanceof RetryExhaustedError) {
           // Emit and log run finished event with retry exhausted error

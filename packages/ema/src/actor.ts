@@ -16,6 +16,7 @@ import type {
   ActorMemory,
 } from "./skills/memory";
 import { LLMClient } from "./llm";
+import { ActorLogger } from "./logger/actor_logger";
 
 /**
  * A facade of the actor functionalities between the server (system) and the agent (actor).
@@ -29,6 +30,8 @@ export class ActorWorker implements ActorStateStorage, ActorMemory {
   private currentStatus: ActorStatus = "idle";
   /** The event stream of the actor. */
   private eventStream = new EventHistory();
+  /** The logger of the actor. */
+  private readonly logger: ActorLogger = new ActorLogger("console", "full");
 
   constructor(
     /** The config of the actor. */
@@ -143,6 +146,11 @@ export class ActorWorker implements ActorStateStorage, ActorMemory {
     for (const cb of this.subscribers) {
       cb({ ...response });
     }
+    this.logger.log(
+      "debug",
+      `[${status}] events=[${response.events?.map((e) => e.type).join(", ")}]`,
+      response,
+    );
   }
 
   /**

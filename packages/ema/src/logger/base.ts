@@ -4,7 +4,7 @@ import type {
   ToolMessage,
   UserMessage,
 } from "../schema";
-import type { AgentEventContent } from "../agent";
+import type { AgentEventName, AgentEventContent } from "../agent";
 
 export type LoggerMode = "console" | "file" | "database";
 export type LoggerLevel = "none" | "full" | "debug" | "info" | "warn" | "error";
@@ -152,11 +152,8 @@ export interface AgentLoggerInterface {
   logEMARplyReceived(
     content: AgentEventContent<"emaReplyReceived">,
   ): Promise<void>;
-}
-
-export interface ContextLoggerInterface {
-  logFullMessages(messages: Message[]): Promise<void>;
-  logUserMessage(message: UserMessage): Promise<void>;
-  logToolMessage(message: ToolMessage): Promise<void>;
-  logModelMessage(message: ModelMessage): Promise<void>;
+  logAgentEvent(
+    name: AgentEventName,
+    content: AgentEventContent<AgentEventName>,
+  ): Promise<void>;
 }

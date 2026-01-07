@@ -1,8 +1,8 @@
 import { LoggerBase } from "./base";
 import type { LoggerMode, LoggerLevel } from "./base";
 
-export class RetryLogger extends LoggerBase {
+export class ActorLogger extends LoggerBase {
   constructor(mode: LoggerMode | LoggerMode[], level: LoggerLevel) {
-    super("RetryLogger", mode, level);
+    super("ActorLogger", mode, level);
   }
 }
