@@ -146,7 +146,7 @@ export class ActorWorker implements ActorStateStorage, ActorMemory {
     for (const cb of this.subscribers) {
       cb({ ...response });
     }
-    this.logger.log(
+    void this.logger.log(
       "debug",
       `[${status}] events=[${response.events?.map((e) => e.type).join(", ")}]`,
       response,
