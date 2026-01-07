@@ -34,11 +34,21 @@ export interface LogRecord {
   data?: any;
 }
 
+/**
+ * Base logger that formats records and dispatches them to enabled outputs.
+ *
+ * Usage: subclass and call `this.log(...)` with the message and optional data.
+ */
 export abstract class LoggerBase {
   readonly name: string;
   protected readonly modes: LoggerMode[];
   protected readonly level: LoggerLevel;
 
+  /**
+   * @param name - Logger name shown in output.
+   * @param mode - Output targets (console/file/database).
+   * @param level - Minimum log level to emit.
+   */
   constructor(
     name: string,
     mode: LoggerMode | LoggerMode[] = "console",

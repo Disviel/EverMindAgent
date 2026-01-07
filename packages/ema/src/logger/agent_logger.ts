@@ -7,7 +7,16 @@ import type {
   AgentLoggerInterface,
 } from "./base";
 
+/**
+ * Logger for agent lifecycle events emitted by `Agent`.
+ *
+ * Usage: create with target modes and level, then call `logAgentEvent`.
+ */
 export class AgentLogger extends LoggerBase implements AgentLoggerInterface {
+  /**
+   * @param mode - Output targets (console/file/database).
+   * @param level - Minimum log level to emit.
+   */
   constructor(mode: LoggerMode | LoggerMode[], level: LoggerLevel) {
     super("AgentLogger", mode, level);
   }
