@@ -59,7 +59,6 @@ export class AgentLogger extends LoggerBase implements AgentLoggerInterface {
       const message = `[createSummaryFinished] round: ${content.roundNum}, msg: ${content.msg}, summary: ${content.summaryText}`;
       await this.log(level, message, content);
     } else {
-      const level: LogLevel = "warn";
       const message = `[createSummaryFinished] round: ${content.roundNum}, msg: ${content.msg}`;
       await this.log(level, message, content);
     }
