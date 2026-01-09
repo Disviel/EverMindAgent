@@ -37,17 +37,22 @@ export class RetryConfig {
      */
     // public readonly retryable_exceptions: Array<typeof Error> = [Error],
   ) {}
+}
 
-  /**
-   * Calculate delay time (exponential backoff)
-   *
-   * @param attempt - Current attempt number (starting from 0)
-   * @returns Delay time (seconds)
-   */
-  public calculateDelay(attempt: number): number {
-    const delay = this.initial_delay * Math.pow(this.exponential_base, attempt);
-    return Math.min(delay, this.max_delay);
-  }
+/**
+ * Calculate delay time (exponential backoff)
+ *
+ * @param attempt - Current attempt number (starting from 0)
+ * @returns Delay time (seconds)
+ */
+function calculateDelay(
+  attempt: number,
+  initial_delay: number,
+  exponential_base: number,
+  max_delay: number,
+): number {
+  const delay = initial_delay * Math.pow(exponential_base, attempt);
+  return Math.min(delay, max_delay);
 }
 
 export class RetryExhaustedError extends Error {
@@ -96,7 +101,12 @@ export function asyncRetry(
             );
             throw new RetryExhaustedError(lastException, attempt + 1);
           }
-          const delay = config.calculateDelay(attempt);
+          const delay = calculateDelay(
+            attempt,
+            config.initial_delay,
+            config.exponential_base,
+            config.max_delay,
+          );
           console.warn(
             `Function ${propertyKey} call ${attempt + 1} failed: ${lastException.message}, retrying attempt ${attempt + 2} after ${delay.toFixed(2)} seconds`,
           );
