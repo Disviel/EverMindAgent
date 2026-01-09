@@ -16,9 +16,8 @@ import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
 
 import { RetryConfig } from "./retry";
-import type { Tool } from "./tools/base";
-import { EmaReplyTool } from "./tools/ema_reply_tool";
-
+import { type Tool, baseTools } from "./tools";
+import { skillsPrompt } from "./skills";
 export { RetryConfig } from "./retry";
 
 /**
@@ -450,12 +449,14 @@ export class Config {
         `System prompt file not found: ${this.agent.systemPromptFile}`,
       );
     }
-    return fs.readFileSync(path, "utf-8");
+    return fs
+      .readFileSync(path, "utf-8")
+      .replace("{SKILLS_METADATA}", skillsPrompt);
   }
 
   // TODO: populate with concrete tool instances when tool wiring is ready.
   get baseTools(): Tool[] {
-    return [new EmaReplyTool()];
+    return baseTools;
   }
 
   /**

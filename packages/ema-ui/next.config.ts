@@ -5,7 +5,7 @@ loadEnvConfig(`${process.cwd()}/../../`);
 
 const nextConfig: NextConfig = {
   /* config options here */
-
+  transpilePackages: ["ema"],
   // https://github.com/vercel/next.js/issues/85371
   serverExternalPackages: [
     "@lancedb/lancedb",

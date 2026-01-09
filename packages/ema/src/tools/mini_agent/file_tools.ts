@@ -6,7 +6,7 @@ import path from "node:path";
 import { Tiktoken } from "js-tiktoken";
 import cl100k_base from "js-tiktoken/ranks/cl100k_base";
 
-import { Tool, ToolResult } from "./base";
+import { Tool, ToolResult } from "../base";
 
 const DEFAULT_MAX_TOKENS = 32000;
 

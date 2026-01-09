@@ -4,7 +4,7 @@
  * Implements Progressive Disclosure (Level 2): Load full skill content when needed
  */
 
-import { Tool, ToolResult } from "./base";
+import { Tool, ToolResult } from "../base";
 import { SkillLoader } from "./skill_loader";
 
 export class GetSkillTool extends Tool {

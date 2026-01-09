@@ -8,7 +8,7 @@ import { ChildProcess, spawn, type StdioOptions } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { EOL } from "node:os";
 
-import { Tool, ToolResult } from "./base";
+import { Tool, ToolResult } from "../base";
 
 class BashOutputResult extends ToolResult {
   /** Bash command execution result with separated stdout and stderr.

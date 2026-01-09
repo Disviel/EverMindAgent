@@ -9,7 +9,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { Tool, ToolResult } from "./base";
+import { Tool, ToolResult } from "../base";
 
 export class SessionNoteTool extends Tool {
   memoryFile: string;

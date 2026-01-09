@@ -6,6 +6,7 @@
   "description": "EverMemoryArchive represents Ema Fan Club's initiative to imbue agents with continuously evolving personalities via long-term memory mechanisms.",
   "main": "index.js",
   "scripts": {
+    "actor": "pnpm tsx packages/ema/src/_run_actor.ts",
     "start": "pnpm --filter ema-ui start",
     "cli": "exec tsx packages/ema-cli/src/main.ts",
     "dev": "pnpm --filter ema-ui dev",

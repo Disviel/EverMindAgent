@@ -6,7 +6,7 @@ import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
-import { Tool, ToolResult } from "./base";
+import { Tool, ToolResult } from "../base";
 
 /** Wrapper for MCP tools. */
 export class MCPTool extends Tool {
