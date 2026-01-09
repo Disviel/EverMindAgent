@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { ExeSkillTool } from "../../tools/exe_skill_tool";
+import { ExecSkillTool } from "../../tools/exec_skill_tool";
 import { ToolResult } from "../../tools/base";
 import { Skill } from "../../skills/base";
 
@@ -22,14 +22,14 @@ class StubSkill extends Skill {
 
 describe("ExeSkillTool", () => {
   it("fails when skill missing", async () => {
-    const tool = new ExeSkillTool({});
+    const tool = new ExecSkillTool({});
     const res = await tool.execute("missing", {});
     expect(res.success).toBe(false);
     expect(res.error).toMatch(/does not exist/);
   });
 
   it("validates input schema", async () => {
-    const tool = new ExeSkillTool({});
+    const tool = new ExecSkillTool({});
     const res = await tool.execute("", {});
     expect(res.success).toBe(false);
     expect(res.error).toMatch(/Invalid exe_skill_tool input/);
@@ -40,7 +40,7 @@ describe("ExeSkillTool", () => {
       return new ToolResult({ success: true, content: JSON.stringify(args) });
     });
     const registry = { stub: new StubSkill(execSpy) };
-    const tool = new ExeSkillTool(registry);
+    const tool = new ExecSkillTool(registry);
     const payload = { a: 1, b: "x" };
     const res = await tool.execute("stub", payload);
     expect(execSpy).toHaveBeenCalledWith(payload);
@@ -56,7 +56,7 @@ describe("ExeSkillTool", () => {
       });
     });
     const registry = { stub: new StubSkill(execSpy) };
-    const tool = new ExeSkillTool(registry);
+    const tool = new ExecSkillTool(registry);
     const res = await tool.execute("stub");
     expect(execSpy).toHaveBeenCalledWith(undefined);
     expect(res.success).toBe(true);
@@ -68,7 +68,7 @@ describe("ExeSkillTool", () => {
       return new ToolResult({ success: false, error: "boom" });
     });
     const registry = { stub: new StubSkill(execSpy) };
-    const tool = new ExeSkillTool(registry);
+    const tool = new ExecSkillTool(registry);
     const res = await tool.execute("stub", { any: "thing" });
     expect(execSpy).toHaveBeenCalled();
     expect(res.success).toBe(false);
@@ -80,7 +80,7 @@ describe("ExeSkillTool", () => {
       throw new Error("explode");
     });
     const registry = { stub: new StubSkill(execSpy) };
-    const tool = new ExeSkillTool(registry);
+    const tool = new ExecSkillTool(registry);
     await expect(tool.execute("stub")).rejects.toThrow("explode");
   });
 });

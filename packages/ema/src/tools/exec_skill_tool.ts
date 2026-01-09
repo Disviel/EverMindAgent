@@ -9,7 +9,7 @@ const ExeSkillSchema = z
   })
   .strict();
 
-export class ExeSkillTool extends Tool {
+export class ExecSkillTool extends Tool {
   private registry: SkillRegistry;
 
   /**
@@ -21,7 +21,7 @@ export class ExeSkillTool extends Tool {
   }
 
   get name(): string {
-    return "exe_skill";
+    return "exec_skill";
   }
 
   get description(): string {
