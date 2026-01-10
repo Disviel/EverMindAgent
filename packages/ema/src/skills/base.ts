@@ -84,6 +84,7 @@ const defaultSkillsDir = path.dirname(fileURLToPath(import.meta.url));
  * falling back to file:// when running directly under Node.
  */
 async function importSkillModule(name: string, indexPath: string) {
+  console.log(`Importing skill module: ${name} from ${indexPath}`);
   // 1) bundler-friendly import so Next/Turbopack can transpile TS on the fly
   try {
     return await import(
@@ -121,15 +122,20 @@ export async function loadSkills(
   await Promise.all(
     skillNames.map(async (name) => {
       try {
-        const skillDir = path.join(skillsDir, name);
-        const indexCandidates = [
-          path.join(skillDir, "index.js"),
-          path.join(skillDir, "index.mjs"),
-          path.join(skillDir, "index.ts"),
-        ];
-        const indexPath = indexCandidates.find((p) => fs.existsSync(p));
-        if (!indexPath) return;
-        const mod = (await importSkillModule(name, indexPath)) as {
+        // todo: find skills by reading directory.
+        const skills = ["demo-skill"];
+
+        // const skillDir = path.join(skillsDir, name);
+        // const indexCandidates = [
+        //   path.join(skillDir, "index.js"),
+        //   path.join(skillDir, "index.mjs"),
+        //   path.join(skillDir, "index.ts"),
+        // ];
+        // const indexPath = indexCandidates.find((p) => fs.existsSync(p));
+        // if (!indexPath) return;
+
+        // Import `demo-skill` from `./demo-skill` directory.
+        const mod = (await importSkillModule(skills[0], skills[0])) as {
           default?: new (skillsDir: string, name: string) => Skill;
         };
         if (!mod.default) {
