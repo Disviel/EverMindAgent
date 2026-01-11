@@ -4,15 +4,13 @@ import type { ToolResult } from "../../tools/base";
 
 const format = (date: Date) => {
   const pad = (v: number) => String(v).padStart(2, "0");
-  return (
-    [date.getFullYear(), pad(date.getMonth() + 1), pad(date.getDate())].join(
-      "-",
-    ) +
-    " " +
-    [pad(date.getHours()), pad(date.getMinutes()), pad(date.getSeconds())].join(
-      ":",
-    )
-  );
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  const hours = pad(date.getHours());
+  const minutes = pad(date.getMinutes());
+  const seconds = pad(date.getSeconds());
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 };
 
 describe("DemoSkill", () => {
