@@ -121,6 +121,7 @@ async function main(): Promise<void> {
       break;
     }
     await actor.work([{ kind: "text", content: userInput }]);
+    // To avoid the last log from being printed after "YOU >"
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
 
