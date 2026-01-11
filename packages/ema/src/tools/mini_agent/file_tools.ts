@@ -6,7 +6,8 @@ import path from "node:path";
 import { Tiktoken } from "js-tiktoken";
 import cl100k_base from "js-tiktoken/ranks/cl100k_base";
 
-import { Tool, ToolResult } from "../base";
+import { Tool } from "../base";
+import type { ToolResult } from "../base";
 
 const DEFAULT_MAX_TOKENS = 32000;
 
@@ -125,11 +126,11 @@ export class ReadTool extends Tool {
         : path.resolve(this.workspaceDir, pathInput);
 
       if (!fs.existsSync(resolvedPath)) {
-        return new ToolResult({
+        return {
           success: false,
           content: "",
           error: `File not found: ${pathInput}`,
-        });
+        };
       }
 
       const rawContent = await fsp.readFile(resolvedPath, "utf-8");
@@ -160,13 +161,13 @@ export class ReadTool extends Tool {
       // Apply token truncation if needed
       content = truncateTextByTokens(content, DEFAULT_MAX_TOKENS);
 
-      return new ToolResult({ success: true, content });
+      return { success: true, content };
     } catch (error) {
-      return new ToolResult({
+      return {
         success: false,
         content: "",
         error: (error as Error).message,
-      });
+      };
     }
   }
 }
@@ -225,16 +226,16 @@ export class WriteTool extends Tool {
       await fsp.mkdir(path.dirname(resolvedPath), { recursive: true });
       await fsp.writeFile(resolvedPath, content, "utf-8");
 
-      return new ToolResult({
+      return {
         success: true,
         content: `Successfully wrote to ${resolvedPath}`,
-      });
+      };
     } catch (error) {
-      return new ToolResult({
+      return {
         success: false,
         content: "",
         error: (error as Error).message,
-      });
+      };
     }
   }
 }
@@ -300,36 +301,36 @@ export class EditTool extends Tool {
         : path.resolve(this.workspaceDir, pathInput);
 
       if (!fs.existsSync(resolvedPath)) {
-        return new ToolResult({
+        return {
           success: false,
           content: "",
           error: `File not found: ${pathInput}`,
-        });
+        };
       }
 
       const content = await fsp.readFile(resolvedPath, "utf-8");
 
       if (!content.includes(oldStr)) {
-        return new ToolResult({
+        return {
           success: false,
           content: "",
           error: `Text not found in file: ${oldStr}`,
-        });
+        };
       }
 
       const newContent = content.replaceAll(oldStr, newStr);
       await fsp.writeFile(resolvedPath, newContent, "utf-8");
 
-      return new ToolResult({
+      return {
         success: true,
         content: `Successfully edited ${resolvedPath}`,
-      });
+      };
     } catch (error) {
-      return new ToolResult({
+      return {
         success: false,
         content: "",
         error: (error as Error).message,
-      });
+      };
     }
   }
 }

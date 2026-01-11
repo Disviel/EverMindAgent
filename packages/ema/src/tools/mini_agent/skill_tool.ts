@@ -4,7 +4,8 @@
  * Implements Progressive Disclosure (Level 2): Load full skill content when needed
  */
 
-import { Tool, ToolResult } from "../base";
+import { Tool } from "../base";
+import type { ToolResult } from "../base";
 import { SkillLoader } from "./skill_loader";
 
 export class GetSkillTool extends Tool {
@@ -44,16 +45,16 @@ export class GetSkillTool extends Tool {
 
     if (!skill) {
       const available = this.skillLoader.listSkills().join(", ");
-      return new ToolResult({
+      return {
         success: false,
         content: "",
         error: `Skill '${skill_name}' does not exist. Available skills: ${available}`,
-      });
+      };
     }
 
     // Return complete skill content
     const result = skill.toPrompt();
-    return new ToolResult({ success: true, content: result });
+    return { success: true, content: result };
   }
 }
 

@@ -15,7 +15,7 @@ import {
   isToolMessage,
   isUserMessage,
 } from "./schema";
-import { Tool, ToolResult } from "./tools/base";
+import type { Tool, ToolResult } from "./tools/base";
 import { EmaReplyTool, type EmaReply } from "./tools/ema_reply_tool";
 
 const AgentEventDefs = {
@@ -607,10 +607,10 @@ export class Agent {
         let result: ToolResult;
         const tool = this.contextManager.toolDict.get(functionName);
         if (!tool) {
-          result = new ToolResult({
+          result = {
             success: false,
             error: `Unknown tool: ${functionName}`,
-          });
+          };
         } else {
           try {
             const props = (
@@ -623,10 +623,10 @@ export class Agent {
           } catch (err) {
             const errorDetail = `${(err as Error).name}: ${(err as Error).message}`;
             const errorTrace = (err as Error).stack ?? "";
-            result = new ToolResult({
+            result = {
               success: false,
               error: `Tool execution failed: ${errorDetail}\n\nTraceback:\n${errorTrace}`,
-            });
+            };
           }
         }
 

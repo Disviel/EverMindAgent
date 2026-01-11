@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { GetSkillTool } from "../../tools/get_skill_tool";
-import { ToolResult } from "../../tools/base";
+import type { ToolResult } from "../../tools/base";
 import { Skill } from "../../skills/base";
 
 class StubSkill extends Skill {
@@ -16,7 +16,7 @@ class StubSkill extends Skill {
     return {};
   }
   async execute(): Promise<ToolResult> {
-    return new ToolResult({ success: true, content: "ok" });
+    return { success: true, content: "ok" };
   }
   async getPlaybook(): Promise<string> {
     return this.playbook;

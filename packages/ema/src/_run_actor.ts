@@ -1,7 +1,6 @@
 import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { AgentEvents, type AgentEventContent } from "./agent";
-import { ToolResult } from "./tools/base";
 import { Config } from "./config";
 import type {
   ActorDB,

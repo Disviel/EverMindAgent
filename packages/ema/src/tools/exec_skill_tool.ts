@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { Tool, ToolResult } from "./base";
+import { Tool } from "./base";
+import type { ToolResult } from "./base";
 import { type SkillRegistry } from "../skills";
 
 const ExeSkillSchema = z
@@ -42,18 +43,18 @@ export class ExecSkillTool extends Tool {
     try {
       payload = ExeSkillSchema.parse({ skill_name, args });
     } catch (err) {
-      return new ToolResult({
+      return {
         success: false,
         error: `Invalid exe_skill_tool input: ${(err as Error).message}`,
-      });
+      };
     }
 
     const skill = this.registry[payload.skill_name];
     if (!skill) {
-      return new ToolResult({
+      return {
         success: false,
         error: `Skill '${payload.skill_name}' does not exist.`,
-      });
+      };
     }
 
     if (typeof payload.args === "undefined") {

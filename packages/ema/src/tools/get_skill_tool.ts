@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { Tool, ToolResult } from "./base";
+import { Tool } from "./base";
+import type { ToolResult } from "./base";
 import { type SkillRegistry } from "../skills";
 
 const GetSkillSchema = z
@@ -40,21 +41,21 @@ export class GetSkillTool extends Tool {
     try {
       payload = GetSkillSchema.parse({ skill_name });
     } catch (err) {
-      return new ToolResult({
+      return {
         success: false,
         error: `Invalid get_skill_tool input: ${(err as Error).message}`,
-      });
+      };
     }
 
     const skill = this.registry[payload.skill_name];
     if (!skill) {
-      return new ToolResult({
+      return {
         success: false,
         error: `Skill '${payload.skill_name}' does not exist.`,
-      });
+      };
     }
 
     const playbook = await skill.getPlaybook();
-    return new ToolResult({ success: true, content: playbook });
+    return { success: true, content: playbook };
   }
 }

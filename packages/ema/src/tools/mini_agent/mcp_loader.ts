@@ -6,7 +6,8 @@ import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
-import { Tool, ToolResult } from "../base";
+import { Tool } from "../base";
+import type { ToolResult } from "../base";
 
 /** Wrapper for MCP tools. */
 export class MCPTool extends Tool {
@@ -62,17 +63,17 @@ export class MCPTool extends Tool {
       const contentStr = contentParts.join("\n");
       const isError = result?.isError ?? false;
 
-      return new ToolResult({
+      return {
         success: !isError,
         content: contentStr,
-        error: isError ? "Tool returned error" : null,
-      });
+        error: isError ? "Tool returned error" : undefined,
+      };
     } catch (error) {
-      return new ToolResult({
+      return {
         success: false,
         content: "",
         error: `MCP tool execution failed: ${(error as Error).message}`,
-      });
+      };
     }
   }
 }

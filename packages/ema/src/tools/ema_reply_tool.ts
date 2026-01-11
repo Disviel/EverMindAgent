@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-import { Tool, ToolResult } from "./base";
+import { Tool } from "./base";
+import type { ToolResult } from "./base";
 
 const EmaReplySchema = z
   .object({
@@ -58,15 +59,15 @@ export class EmaReplyTool extends Tool {
         action,
         response,
       });
-      return new ToolResult({
+      return {
         success: true,
         content: JSON.stringify(payload, null, 2),
-      });
+      };
     } catch (err) {
-      return new ToolResult({
+      return {
         success: false,
         error: `Invalid structured reply: ${(err as Error).message}`,
-      });
+      };
     }
   }
 }

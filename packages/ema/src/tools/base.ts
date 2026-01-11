@@ -1,18 +1,8 @@
 /** Tool execution result. */
-export class ToolResult {
+export interface ToolResult {
   success: boolean;
   content?: string;
   error?: string;
-
-  constructor(options: {
-    success: boolean;
-    content?: string;
-    error?: string | null;
-  }) {
-    this.success = options.success;
-    this.content = options.content ?? undefined;
-    this.error = options.error ?? undefined;
-  }
 }
 
 /** Base class for all tools. */

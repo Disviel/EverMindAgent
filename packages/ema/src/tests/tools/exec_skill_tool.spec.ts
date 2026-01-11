@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { ExecSkillTool } from "../../tools/exec_skill_tool";
-import { ToolResult } from "../../tools/base";
+import type { ToolResult } from "../../tools/base";
 import { Skill } from "../../skills/base";
 
 class StubSkill extends Skill {
@@ -37,7 +37,7 @@ describe("ExeSkillTool", () => {
 
   it("executes skill with args", async () => {
     const execSpy = vi.fn(async (args?: any) => {
-      return new ToolResult({ success: true, content: JSON.stringify(args) });
+      return { success: true, content: JSON.stringify(args) };
     });
     const registry = { stub: new StubSkill(execSpy) };
     const tool = new ExecSkillTool(registry);
@@ -50,10 +50,10 @@ describe("ExeSkillTool", () => {
 
   it("executes skill without args", async () => {
     const execSpy = vi.fn(async (args?: any) => {
-      return new ToolResult({
+      return {
         success: true,
         content: args === undefined ? "no-args" : "with-args",
-      });
+      };
     });
     const registry = { stub: new StubSkill(execSpy) };
     const tool = new ExecSkillTool(registry);
@@ -65,7 +65,7 @@ describe("ExeSkillTool", () => {
 
   it("passes through failure ToolResult", async () => {
     const execSpy = vi.fn(async () => {
-      return new ToolResult({ success: false, error: "boom" });
+      return { success: false, error: "boom" };
     });
     const registry = { stub: new StubSkill(execSpy) };
     const tool = new ExecSkillTool(registry);

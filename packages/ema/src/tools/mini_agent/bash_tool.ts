@@ -8,15 +8,20 @@ import { ChildProcess, spawn, type StdioOptions } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { EOL } from "node:os";
 
-import { Tool, ToolResult } from "../base";
+import { Tool } from "../base";
+import type { ToolResult } from "../base";
 
-class BashOutputResult extends ToolResult {
+class BashOutputResult implements ToolResult {
+  success: boolean;
+  content?: string;
+  error?: string;
   /** Bash command execution result with separated stdout and stderr.
    *
-   * Inherits from ToolResult which provides:
-   * - success: bool
-   * - content: str (used for formatted output message, auto-generated from stdout/stderr)
-   * - error: str | None (used for error messages)
+   * Implements ToolResult fields plus:
+   * - stdout: str (raw stdout)
+   * - stderr: str (raw stderr)
+   * - exitCode: int (process exit code)
+   * - bashId: str | null (background session id)
    */
   stdout: string;
   stderr: string;
@@ -32,11 +37,9 @@ class BashOutputResult extends ToolResult {
     content?: string;
     error?: string | null;
   }) {
-    super({
-      success: options.success,
-      content: options.content ?? "",
-      error: options.error ?? null,
-    });
+    this.success = options.success;
+    this.content = options.content ?? "";
+    this.error = options.error ?? undefined;
     this.stdout = options.stdout;
     this.stderr = options.stderr;
     this.exitCode = options.exitCode;

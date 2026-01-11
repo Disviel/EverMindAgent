@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { Skill } from "../base";
-import { ToolResult } from "../../tools/base";
+import type { ToolResult } from "../../tools/base";
 
 /** Format a Date as `YYYY-MM-DD HH:mm:ss`. */
 function formatDate(date: Date): string {
@@ -60,45 +60,45 @@ export default class DemoSkill extends Skill {
     try {
       payload = DemoSkillSchema.parse(args);
     } catch (err) {
-      return new ToolResult({
+      return {
         success: false,
         error: `Invalid demo-skill input: ${(err as Error).message}`,
-      });
+      };
     }
 
     const input = payload.input;
     const parsed = parseCommand(input);
 
     if (!parsed) {
-      return new ToolResult({
+      return {
         success: false,
         error: "未检测到命令，请使用以 # 开头的指令。",
-      });
+      };
     }
 
     if (parsed.command === "time") {
-      return new ToolResult({
+      return {
         success: true,
         content: formatDate(new Date()),
-      });
+      };
     }
 
     if (parsed.command === "echo") {
       if (!parsed.args) {
-        return new ToolResult({
+        return {
           success: false,
           error: "#echo 需要一个字符串参数。",
-        });
+        };
       }
-      return new ToolResult({
+      return {
         success: true,
         content: parsed.args,
-      });
+      };
     }
 
-    return new ToolResult({
+    return {
       success: false,
       error: "未知命令，可用命令：#time、#echo",
-    });
+    };
   }
 }
