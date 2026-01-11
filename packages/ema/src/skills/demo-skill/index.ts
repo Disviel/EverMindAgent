@@ -16,6 +16,7 @@ function formatDate(date: Date): string {
   );
 }
 
+//TODO: Use arktype in future
 const DemoSkillSchema = z
   .object({
     input: z.string().min(1).describe("用户输入的原始命令文本"),
