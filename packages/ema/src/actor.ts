@@ -14,7 +14,7 @@ import type {
   LongTermMemory,
   ActorStateStorage,
   ActorMemory,
-} from "./skills/memory";
+} from "./memory/memory";
 import { LLMClient } from "./llm";
 
 /**
