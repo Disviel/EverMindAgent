@@ -17,7 +17,7 @@ export class SessionNoteTool extends Tool {
 
   constructor(memoryFile: string = "./workspace/.agent_memory.json") {
     /**
-     * Initialize session note tool.
+     * Initializes the session note tool.
      *
      * Args:
      *     memoryFile: Path to the note storage file
@@ -59,7 +59,7 @@ export class SessionNoteTool extends Tool {
   }
 
   async _loadFromFile(): Promise<any[]> {
-    /** Load notes from file.
+    /** Loads notes from the file.
      *
      * Returns empty list if file doesn't exist (lazy loading).
      */
@@ -75,7 +75,7 @@ export class SessionNoteTool extends Tool {
   }
 
   async _saveToFile(notes: any[]): Promise<void> {
-    /** Save notes to file.
+    /** Saves notes to the file.
      *
      * Creates parent directory and file if they don't exist (lazy initialization).
      */
@@ -92,7 +92,7 @@ export class SessionNoteTool extends Tool {
     content: string,
     category: string = "general",
   ): Promise<ToolResult> {
-    /** Record a session note.
+    /** Records a session note.
      *
      * Args:
      *     content: The information to record
@@ -135,7 +135,7 @@ export class RecallNoteTool extends Tool {
 
   constructor(memoryFile: string = "./workspace/.agent_memory.json") {
     /**
-     * Initialize recall note tool.
+     * Initializes the recall note tool.
      *
      * Args:
      *     memoryFile: Path to the note storage file
@@ -169,7 +169,7 @@ export class RecallNoteTool extends Tool {
   }
 
   async execute(category: string | null = null): Promise<ToolResult> {
-    /** Recall session notes.
+    /** Recalls session notes.
      *
      * Args:
      *     category: Optional category filter

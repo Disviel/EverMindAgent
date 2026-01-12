@@ -7,15 +7,15 @@ export interface ToolResult {
 
 /** Base class for all tools. */
 export abstract class Tool {
-  /** Tool name. */
+  /** Returns the tool name. */
   abstract get name(): string;
 
-  /** Tool description. */
+  /** Returns the tool description. */
   abstract get description(): string;
 
-  /** Tool parameters schema (JSON Schema format). */
+  /** Returns the tool parameters schema (JSON Schema format). */
   abstract get parameters(): Record<string, any>;
 
-  /** Execute the tool with arbitrary arguments. */
+  /** Executes the tool with arbitrary arguments. */
   abstract execute(...args: any[]): Promise<ToolResult>;
 }

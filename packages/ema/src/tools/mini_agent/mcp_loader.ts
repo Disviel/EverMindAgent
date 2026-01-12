@@ -42,7 +42,7 @@ export class MCPTool extends Tool {
   }
 
   async execute(kwargs: Record<string, any>): Promise<ToolResult> {
-    /** Execute MCP tool via the session. */
+    /** Executes the MCP tool via the session. */
     try {
       const result = await this._session.callTool(this._name, {
         arguments: kwargs,
@@ -104,7 +104,7 @@ class MCPServerConnection {
   }
 
   async connect(): Promise<boolean> {
-    /** Connect to the MCP server using proper async context management. */
+    /** Connects to the MCP server using proper async context management. */
     try {
       // Prepare transport
       const transport = new StdioClientTransport({
@@ -166,7 +166,7 @@ class MCPServerConnection {
   }
 
   async disconnect(): Promise<void> {
-    /** Properly disconnect from the MCP server. */
+    /** Disconnects from the MCP server. */
     try {
       if (this.session?.close) {
         await this.session.close();
@@ -189,7 +189,7 @@ export async function loadMcpToolsAsync(
   configPath: string = "mcp.json",
 ): Promise<Tool[]> {
   /**
-   * Load MCP tools from config file.
+   * Loads MCP tools from the config file.
    *
    * This function:
    * 1. Reads the MCP config file
@@ -265,7 +265,7 @@ export async function loadMcpToolsAsync(
 }
 
 export async function cleanupMcpConnections(): Promise<void> {
-  /** Clean up all MCP connections. */
+  /** Cleans up all MCP connections. */
   for (const connection of _mcpConnections) {
     await connection.disconnect();
   }

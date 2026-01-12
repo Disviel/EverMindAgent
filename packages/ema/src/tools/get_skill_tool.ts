@@ -33,7 +33,7 @@ export class GetSkillTool extends Tool {
   }
 
   /**
-   * Fetch the SKILL.md playbook for a given skill.
+   * Fetches the SKILL.md playbook for a given skill.
    * @param skill_name - Name of the skill to fetch.
    */
   async execute(skill_name: string): Promise<ToolResult> {

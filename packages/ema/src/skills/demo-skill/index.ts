@@ -2,7 +2,7 @@ import { z } from "zod";
 import { Skill } from "../base";
 import type { ToolResult } from "../../tools/base";
 
-/** Format a Date as `YYYY-MM-DD HH:mm:ss`. */
+/** Formats a Date as `YYYY-MM-DD HH:mm:ss`. */
 function formatDate(date: Date): string {
   const pad = (v: number) => String(v).padStart(2, "0");
   const year = date.getFullYear();
@@ -22,7 +22,7 @@ const DemoSkillSchema = z
   .strict();
 
 /**
- * Parse a user input string that starts with '#'.
+ * Parses a user input string that starts with '#'.
  * Supports commands like '#time' or '#echo hello'.
  */
 function parseCommand(input: string): { command: string; args: string } | null {
@@ -38,7 +38,7 @@ function parseCommand(input: string): { command: string; args: string } | null {
 }
 
 export default class DemoSkill extends Skill {
-  /** Simple demo skill that understands #time and #echo commands. */
+  /** Returns a description of the demo skill that understands #time and #echo commands. */
   get description(): string {
     return "解析以 # 开头的命令并生成结果。";
   }
@@ -48,10 +48,10 @@ export default class DemoSkill extends Skill {
   }
 
   /**
-   * Execute the demo skill.
-   * - validates args with zod
-   * - supports #time and #echo commands
-   * - returns localized error messages for invalid inputs
+   * Executes the demo skill.
+   * - Validates args with zod
+   * - Supports #time and #echo commands
+   * - Returns localized error messages for invalid inputs
    */
   async execute(args: { input: string }): Promise<ToolResult> {
     let payload: { input: string };

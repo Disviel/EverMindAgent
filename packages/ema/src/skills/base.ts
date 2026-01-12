@@ -22,19 +22,19 @@ export abstract class Skill {
     this.name = name;
   }
 
-  /** One-line human-readable description of the skill. */
+  /** Returns a one-line human-readable description of the skill. */
   abstract get description(): string;
 
-  /** JSON Schema describing the arguments the skill accepts. */
+  /** Returns the JSON Schema describing the arguments the skill accepts. */
   abstract get parameters(): Record<string, any>;
 
   /**
-   * Execute the skill.
+   * Executes the skill.
    * @param args - Arguments object that should satisfy `parameters`.
    */
   abstract execute(...args: any[]): Promise<ToolResult>;
 
-  /** Minimal metadata used for listing in prompts/UI. */
+  /** Returns minimal metadata used for listing in prompts/UI. */
   get metadata(): Record<string, string> {
     return {
       name: this.name,
@@ -43,7 +43,7 @@ export abstract class Skill {
   }
 
   /**
-   * Load the SKILL.md playbook (strips frontmatter) and append parameter hints.
+   * Loads the SKILL.md playbook (strips frontmatter) and appends parameter hints.
    * Returns empty string when the playbook file does not exist.
    */
   async getPlaybook(): Promise<string> {
@@ -62,7 +62,7 @@ export abstract class Skill {
 }
 
 /**
- * Build a human-readable list of available skills for prompt injection.
+ * Builds a human-readable list of available skills for prompt injection.
  */
 export function buildSkillsPrompt(registry: SkillRegistry): string {
   const skills = Object.values(registry);
@@ -77,7 +77,7 @@ export function buildSkillsPrompt(registry: SkillRegistry): string {
 }
 
 /**
- * Strip a leading YAML frontmatter block from markdown content.
+ * Strips a leading YAML frontmatter block from markdown content.
  */
 function stripYamlFrontmatter(markdown: string): {
   frontmatter: string | null;
@@ -106,7 +106,7 @@ function stripYamlFrontmatter(markdown: string): {
 }
 
 /**
- * Discover and instantiate skills under the given directory.
+ * Discovers and instantiates skills under the given directory.
  * @param skillsDir - Directory containing skill folders.
  * @returns Registry keyed by skill name.
  */
@@ -137,7 +137,7 @@ export async function loadSkills(
   await Promise.all(
     skillNames.map(async (name) => {
       try {
-        // Use relative path to load skill danamically
+        // Uses a relative path to load the skill dynamically.
         const mod = (await import(`${skillsRel}/${name}/index`)) as {
           default?: new (skillsDir: string, name: string) => Skill;
         };

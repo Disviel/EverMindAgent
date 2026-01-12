@@ -34,7 +34,7 @@ export class ExecSkillTool extends Tool {
   }
 
   /**
-   * Execute a registered skill by name.
+   * Executes a registered skill by name.
    * @param skill_name - Name of the skill to invoke.
    * @param args - Arguments forwarded to the skill's execute method.
    */

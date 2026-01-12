@@ -36,7 +36,7 @@ export class Skill {
     this.skillPath = options.skillPath ?? null;
   }
 
-  /** Convert skill to prompt format */
+  /** Converts the skill to the prompt format. */
   toPrompt(): string {
     return `
 # Skill: ${this.name}
@@ -55,7 +55,7 @@ export class SkillLoader {
   loadedSkills: Record<string, Skill>;
 
   /**
-   * Initialize Skill Loader
+   * Initializes Skill Loader.
    *
    * @param skillsDir Skills directory path
    */
@@ -65,7 +65,7 @@ export class SkillLoader {
   }
 
   /**
-   * Load single skill from SKILL.md file
+   * Loads a single skill from a SKILL.md file.
    *
    * @param skillPath SKILL.md file path
    * @returns Skill object, or null if loading fails
@@ -130,7 +130,7 @@ export class SkillLoader {
   }
 
   /**
-   * Process skill content to replace relative paths with absolute paths.
+   * Processes skill content to replace relative paths with absolute paths.
    *
    * Supports Progressive Disclosure Level 3+: converts relative file references
    * to absolute paths so Agent can easily read nested resources.
@@ -206,7 +206,7 @@ export class SkillLoader {
   }
 
   /**
-   * Discover and load all skills in the skills directory
+   * Discovers and loads all skills in the skills directory.
    *
    * @returns List of Skills
    */
@@ -245,7 +245,7 @@ export class SkillLoader {
   }
 
   /**
-   * Get loaded skill
+   * Gets a loaded skill.
    *
    * @param name Skill name
    * @returns Skill object, or null if not found
@@ -255,7 +255,7 @@ export class SkillLoader {
   }
 
   /**
-   * List all loaded skill names
+   * Lists all loaded skill names.
    *
    * @returns List of skill names
    */
@@ -264,7 +264,7 @@ export class SkillLoader {
   }
 
   /**
-   * Generate prompt containing ONLY metadata (name + description) for all skills.
+   * Generates a prompt containing ONLY metadata (name + description) for all skills.
    * This implements Progressive Disclosure - Level 1.
    *
    * @returns Metadata-only prompt string

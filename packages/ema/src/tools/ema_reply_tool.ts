@@ -24,12 +24,12 @@ export type EmaReply = z.infer<typeof EmaReplySchema>;
 
 /** Tool that enforces JSON output matching the EmaReply shape. */
 export class EmaReplyTool extends Tool {
-  /** Unique tool name. */
+  /** Returns the unique tool name. */
   get name(): string {
     return "ema_reply";
   }
 
-  /** Tool purpose and usage guidance. */
+  /** Returns the tool purpose and usage guidance. */
   get description(): string {
     // TODO: If we need to support multiple sentence replies, we need to modify the description here.
     return (
@@ -40,12 +40,12 @@ export class EmaReplyTool extends Tool {
     );
   }
 
-  /** JSON Schema specifying the expected arguments. */
+  /** Returns the JSON Schema specifying the expected arguments. */
   get parameters(): Record<string, any> {
     return EmaReplySchema.toJSONSchema();
   }
 
-  /** Validate and emit a structured reply payload. */
+  /** Validates and emits a structured reply payload. */
   async execute(
     think: string,
     expression: string,

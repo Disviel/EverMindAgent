@@ -12,7 +12,7 @@ import type { ToolResult } from "../base";
 const DEFAULT_MAX_TOKENS = 32000;
 
 export function truncateTextByTokens(text: string, maxTokens: number): string {
-  /** Truncate text by token count if it exceeds the limit.
+  /** Truncates text by token count if it exceeds the limit.
    *
    * When text exceeds the specified token limit, performs intelligent truncation
    * by keeping the front and back parts while truncating the middle.
@@ -69,7 +69,7 @@ export class ReadTool extends Tool {
 
   constructor(workspaceDir: string = ".") {
     /**
-     * Initialize ReadTool with workspace directory.
+     * Initializes ReadTool with workspace directory.
      *
      * Args:
      *     workspaceDir: Base directory for resolving relative paths
@@ -119,7 +119,7 @@ export class ReadTool extends Tool {
     offset?: number | null,
     limit?: number | null,
   ): Promise<ToolResult> {
-    /** Execute read file. */
+    /** Executes the read file operation. */
     try {
       const resolvedPath = path.isAbsolute(pathInput)
         ? pathInput
@@ -177,7 +177,7 @@ export class WriteTool extends Tool {
 
   constructor(workspaceDir: string = ".") {
     /**
-     * Initialize WriteTool with workspace directory.
+     * Initializes WriteTool with workspace directory.
      *
      * Args:
      *     workspaceDir: Base directory for resolving relative paths
@@ -217,7 +217,7 @@ export class WriteTool extends Tool {
   }
 
   async execute(pathInput: string, content: string): Promise<ToolResult> {
-    /** Execute write file. */
+    /** Executes the write file operation. */
     try {
       const resolvedPath = path.isAbsolute(pathInput)
         ? pathInput
@@ -245,7 +245,7 @@ export class EditTool extends Tool {
 
   constructor(workspaceDir: string = ".") {
     /**
-     * Initialize EditTool with workspace directory.
+     * Initializes EditTool with workspace directory.
      *
      * Args:
      *     workspaceDir: Base directory for resolving relative paths
@@ -294,7 +294,7 @@ export class EditTool extends Tool {
     oldStr: string,
     newStr: string,
   ): Promise<ToolResult> {
-    /** Execute edit file. */
+    /** Executes the edit file operation. */
     try {
       const resolvedPath = path.isAbsolute(pathInput)
         ? pathInput
