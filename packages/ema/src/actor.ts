@@ -247,6 +247,7 @@ export class ActorWorker implements ActorStateStorage, ActorMemory {
       .then(() => this.addBuffer(message))
       .catch((error) => {
         this.logger.error("Failed to write buffer:", error);
+        throw error;
       });
   }
 
