@@ -56,20 +56,23 @@ export class ActorWorker implements ActorStateStorage, ActorMemory {
   /** Whether the next run should reuse the current state after an abort. */
   private resumeStateAfterAbort = false;
 
+  /**
+   * Creates a new actor worker with storage access and event wiring.
+   * @param config - Actor configuration.
+   * @param userId - User identifier for message attribution.
+   * @param actorId - Actor identifier for memory and storage.
+   * @param actorDB - Actor persistence interface.
+   * @param shortTermMemoryDB - Short-term memory persistence interface.
+   * @param longTermMemoryDB - Long-term memory persistence interface.
+   * @param longTermMemorySearcher - Long-term memory search interface.
+   */
   constructor(
-    /** The config of the actor. */
     private readonly config: Config,
-    /** The ID of the user. */
     private readonly userId: number,
-    /** The ID of the actor. */
     private readonly actorId: number,
-    /** The database of the actor. */
     private readonly actorDB: ActorDB,
-    /** The database of the short-term memory. */
     private readonly shortTermMemoryDB: ShortTermMemoryDB,
-    /** The database of the long-term memory. */
     private readonly longTermMemoryDB: LongTermMemoryDB,
-    /** The searcher of the long-term memory. */
     private readonly longTermMemorySearcher: LongTermMemorySearcher,
   ) {
     const llm = new LLMClient(this.config.llm);
@@ -103,14 +106,13 @@ export class ActorWorker implements ActorStateStorage, ActorMemory {
   }
 
   /**
-   * A low-level function to step the actor.
-   * Currently, we ensure that the actor processes the input sequentially.
-   *
-   * @param input - The input to the actor.
+   * Enqueues inputs and runs the agent sequentially for this actor.
+   * @param inputs - Batch of user inputs for a single request.
+   * @returns A promise that resolves after the input is handled or queued.
    * @example
    * ```ts
    * // infinite loop of REPL
-   * for(;;) {
+   * for (;;) {
    *   const line = prompt("YOU > ");
    *   const input: Content = { type: "text", text: line };
    *   await this.work([input]);
@@ -204,9 +206,14 @@ export class ActorWorker implements ActorStateStorage, ActorMemory {
     this.broadcast();
   }
 
+  /**
+   * Reports whether the actor is currently preparing or running.
+   * @returns True if not idle; otherwise false.
+   */
   public isBusy(): boolean {
     return this.currentStatus !== "idle";
   }
+
   /**
    * Gets the state of the actor.
    * @returns The state of the actor.

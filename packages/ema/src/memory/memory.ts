@@ -14,12 +14,11 @@ export class BufferMessage {
 
   /**
    * Creates a buffer message with user/actor metadata.
-   *
-   * Args:
-   *   id: User or actor identifier.
-   *   name: Display name for the sender.
-   *   message: Message payload for persistence and rendering.
-   *   time: Optional timestamp (milliseconds since epoch).
+   * @param params - Construction parameters.
+   * @param params.id - User or actor identifier.
+   * @param params.name - Display name for the sender.
+   * @param params.message - Message payload for persistence and rendering.
+   * @param params.time - Optional timestamp (milliseconds since epoch).
    */
   constructor(params: {
     id: number;
@@ -35,9 +34,7 @@ export class BufferMessage {
 
   /**
    * Converts the buffer message to a user message for API calls.
-   *
-   * Returns:
-   *   UserMessage with a context header prepended.
+   * @returns UserMessage with a context header prepended.
    */
   toUserMessage(): UserMessage {
     if (this.message.role !== "user") {
@@ -58,9 +55,7 @@ export class BufferMessage {
 
   /**
    * Formats the message into a single line for prompt injection.
-   *
-   * Returns:
-   *   Prompt line containing time, role, id, name, and message text.
+   * @returns Prompt line containing time, role, id, name, and message text.
    */
   toPrompt(): string {
     const contents = this.message.contents
@@ -73,14 +68,11 @@ export class BufferMessage {
 
   /**
    * Builds a buffer message from user inputs.
-   *
-   * Args:
-   *   userId: User identifier.
-   *   userName: User display name.
-   *   inputs: User message contents.
-   *   time: Optional timestamp (milliseconds since epoch).
-   * Returns:
-   *   A BufferMessage representing the user message.
+   * @param userId - User identifier.
+   * @param userName - User display name.
+   * @param inputs - User message contents.
+   * @param time - Optional timestamp (milliseconds since epoch).
+   * @returns A BufferMessage representing the user message.
    */
   static fromUser(
     userId: number,
@@ -98,13 +90,10 @@ export class BufferMessage {
 
   /**
    * Builds a buffer message from an EMA reply.
-   *
-   * Args:
-   *   actorId: Actor identifier.
-   *   reply: EMA reply payload.
-   *   time: Optional timestamp (milliseconds since epoch).
-   * Returns:
-   *   A BufferMessage representing the EMA reply.
+   * @param actorId - Actor identifier.
+   * @param reply - EMA reply payload.
+   * @param time - Optional timestamp (milliseconds since epoch).
+   * @returns A BufferMessage representing the EMA reply.
    */
   static fromEma(
     actorId: number,
