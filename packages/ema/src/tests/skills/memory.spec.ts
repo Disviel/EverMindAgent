@@ -47,6 +47,7 @@ describeLLM("MemorySkill", () => {
     worker = new ActorWorker(
       Config.load(),
       1,
+      1,
       new MongoActorDB(mongo),
       new MongoShortTermMemoryDB(mongo),
       new MongoLongTermMemoryDB(mongo),
