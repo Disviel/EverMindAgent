@@ -102,7 +102,7 @@ export class ActorWorker implements ActorStateStorage, ActorMemory {
    * for(;;) {
    *   const line = prompt("YOU > ");
    *   const input: Content = { type: "text", text: line };
-   *   await this.work(1, [input]);
+   *   await this.work([input]);
    * }
    * ```
    */
