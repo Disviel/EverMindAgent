@@ -53,7 +53,7 @@ export class EmaReplyTool extends Tool {
       });
       return {
         success: true,
-        content: JSON.stringify(payload, null, 2),
+        content: JSON.stringify(payload),
       };
     } catch (err) {
       return {

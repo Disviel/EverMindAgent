@@ -360,7 +360,7 @@ export interface ShortTermMemoryEntity extends Entity {
   /**
    * The granularity of short term memory
    */
-  kind: "year" | "month" | "day";
+  kind: "year" | "month" | "week" | "day";
   /**
    * The owner of the short term memory
    */

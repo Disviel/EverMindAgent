@@ -1,6 +1,81 @@
-export interface BufferMessage {
+import dayjs from "dayjs";
+
+import type { EmaReply } from "../tools/ema_reply_tool";
+import type { Content, EmaMessage, UserMessage } from "../schema";
+
+export class BufferMessage {
+  id: number;
   name: string;
-  text: string;
+  message: UserMessage | EmaMessage;
+  time: number;
+
+  constructor(params: {
+    id: number;
+    name: string;
+    message: UserMessage | EmaMessage;
+    time?: number;
+  }) {
+    this.time = params.time ?? Date.now();
+    this.id = params.id;
+    this.name = params.name;
+    this.message = params.message;
+  }
+
+  toUserMessage(): UserMessage {
+    if (this.message.role !== "user") {
+      throw new Error(`Expected user message, got ${this.message.role}`);
+    }
+    const context = [
+      "[CONTEXT]",
+      `time: ${dayjs(this.time).format("YYYY-MM-DD HH:mm:ss")}`,
+      `id: ${this.id}`,
+      `name: ${this.name}`,
+      "[/CONTEXT]",
+    ].join("\n");
+    return {
+      role: "user",
+      contents: [{ type: "text", text: context }, ...this.message.contents],
+    };
+  }
+
+  toPrompt(): string {
+    const contents = this.message.contents
+      .map((part) => (part.type === "text" ? part.text : JSON.stringify(part)))
+      .join("\n");
+    return `- [${dayjs(this.time).format("YYYY-MM-DD HH:mm:ss")}][role:${
+      this.message.role
+    }][id:${this.id}][name:${this.name}] ${contents}`;
+  }
+
+  static fromUser(
+    userId: number,
+    userName: string,
+    inputs: Content[],
+    time?: number,
+  ): BufferMessage {
+    return new BufferMessage({
+      id: userId,
+      name: userName,
+      message: { role: "user", contents: inputs },
+      time,
+    });
+  }
+
+  static fromEma(
+    actorId: number,
+    reply: EmaReply,
+    time?: number,
+  ): BufferMessage {
+    return new BufferMessage({
+      id: actorId,
+      name: "ema",
+      message: {
+        role: "ema",
+        contents: [{ type: "text", text: JSON.stringify(reply) }],
+      },
+      time,
+    });
+  }
 }
 
 /**
@@ -66,7 +141,7 @@ export interface ShortTermMemory {
   /**
    * The granularity of short term memory
    */
-  kind: "year" | "month" | "day";
+  kind: "year" | "month" | "week" | "day";
   /**
    * The os when the actor saw the messages.
    */

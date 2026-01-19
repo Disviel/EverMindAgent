@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import styles from "./page.module.css";
 import type { Message, ActorEvent } from "ema";
 
@@ -9,6 +9,7 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   // Set up SSE connection to subscribe to actor events
   useEffect(() => {
@@ -62,9 +63,16 @@ export default function ChatPage() {
     };
   }, []);
 
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "end",
+    });
+  }, [messages]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputValue.trim() || isLoading) return;
+    if (!inputValue.trim()) return;
 
     const userMessage: Message = {
       role: "user",
@@ -88,7 +96,7 @@ export default function ChatPage() {
           userId: 1,
           actorId: 1,
           // TODO: If supporting more input types, need to adjust here
-          inputs: [{ kind: "text", content: userMessage.contents[0].text }],
+          inputs: userMessage.contents,
         }),
       });
 
@@ -149,6 +157,7 @@ export default function ChatPage() {
                 </div>
               </div>
             ))}
+            <div ref={messagesEndRef} className={styles.messagesEnd} />
           </div>
         )}
       </div>
@@ -161,14 +170,13 @@ export default function ChatPage() {
           placeholder="Enter message..."
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
-          disabled={isLoading}
         />
         <div className={styles.buttonGroup}>
           <button
             type="submit"
             aria-label="Send message"
             className={styles.sendButton}
-            disabled={isLoading || !inputValue.trim()}
+            disabled={!inputValue.trim()}
           >
             <svg
               width="16"

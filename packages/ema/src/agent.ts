@@ -16,66 +16,14 @@ import {
   isUserMessage,
 } from "./schema";
 import type { Tool, ToolResult } from "./tools/base";
-import { EmaReplyTool, type EmaReply } from "./tools/ema_reply_tool";
+import type { EmaReply } from "./tools/ema_reply_tool";
 
 const AgentEventDefs = {
-  /* Emitted when token estimation falls back to the simple method. */
-  tokenEstimationFallbacked: {} as { error: Error },
-  /* Emitted to notify about message summarization steps. */
-  summarizeMessagesStarted: {} as {
-    localEstimatedTokens: number;
-    apiReportedTokens: number;
-    tokenLimit: number;
-  },
-  /* Emitted to notify about message summarization completion. */
-  summarizeMessagesFinished: {} as
-    | {
-        ok: true;
-        msg: string;
-        oldTokens: number;
-        newTokens: number;
-        userMessageCount: number;
-        summaryCount: number;
-      }
-    | {
-        ok: false;
-        msg: string;
-      },
-  /* Emitted to provide notices during the summarization process. */
-  createSummaryFinished: {} as
-    | {
-        ok: true;
-        msg: string;
-        roundNum: number;
-        summaryText: string;
-      }
-    | {
-        ok: false;
-        msg: string;
-        roundNum: number;
-        error: Error;
-      },
-  /* Emitted at the start of each agent step. */
-  stepStarted: {} as { stepNumber: number; maxSteps: number },
   /* Emitted when the agent finished a run. */
   runFinished: {} as
     | { ok: true; msg: string }
     | { ok: false; msg: string; error: Error },
-  /* Emitted when an LLM response is received. */
-  llmResponseReceived: {} as { response: LLMResponse },
-  /* Emitted when a tool call is started. */
-  toolCallStarted: {} as {
-    toolCallId: string;
-    functionName: string;
-    callArgs: Record<string, unknown>;
-  },
-  /* Emitted when a tool call is finished. */
-  toolCallFinished: {} as {
-    ok: boolean;
-    toolCallId: string;
-    functionName: string;
-    result: ToolResult;
-  },
+  /* Emitted when the ema_reply is called successfully. */
   emaReplyReceived: {} as { reply: EmaReply },
 } as const;
 
@@ -151,10 +99,6 @@ export class ContextManager {
   events: AgentEventsEmitter;
   logger: Logger;
 
-  tokenLimit: number;
-  apiTotalTokens: number;
-  skipNextTokenCheck: boolean;
-
   state: AgentState = {
     systemPrompt: "",
     messages: [],
@@ -170,11 +114,6 @@ export class ContextManager {
     this.llmClient = llmClient;
     this.events = events;
     this.logger = logger;
-    this.tokenLimit = tokenLimit;
-    // Token usage tracking
-    // TODO: if messages are provided, we may want to calculate initial token usage
-    this.apiTotalTokens = 0;
-    this.skipNextTokenCheck = false;
   }
 
   get systemPrompt(): string {
@@ -221,290 +160,6 @@ export class ContextManager {
     });
   }
 
-  /** Update API reported token count. */
-  updateApiTokens(response: LLMResponse): void {
-    if (response.totalTokens) {
-      this.apiTotalTokens = response.totalTokens;
-    }
-  }
-
-  /** Accurately calculate token count for message history using tiktoken. */
-  estimateTokens(): number {
-    const enc = new Tiktoken(cl100k_base);
-    try {
-      let totalTokens = 0;
-
-      for (const msg of this.messages) {
-        if (isUserMessage(msg) || isModelMessage(msg)) {
-          for (const block of msg.contents) {
-            if (block.type === "text") {
-              totalTokens += enc.encode(block.text).length;
-            } else {
-              totalTokens += enc.encode(JSON.stringify(block)).length;
-            }
-          }
-        }
-
-        if (isModelMessage(msg) && msg.toolCalls) {
-          totalTokens += enc.encode(JSON.stringify(msg.toolCalls)).length;
-        }
-
-        if (isToolMessage(msg)) {
-          totalTokens += enc.encode(
-            JSON.stringify({
-              content: msg.result.content,
-              error: msg.result.error,
-              success: msg.result.success,
-            }),
-          ).length;
-        }
-
-        // Metadata overhead per message (approximately 4 tokens)
-        totalTokens += 4;
-      }
-
-      return totalTokens;
-    } catch (error) {
-      // this.events.emit(AgentEvents.tokenEstimationFallbacked, {
-      //   error: error as Error,
-      // });
-      this.logger.warn(
-        `Token estimation fallback due to error: ${(error as Error).message}`,
-      );
-      return this.estimateTokensFallback();
-    }
-  }
-
-  /** Fallback token estimation method (when tiktoken is unavailable). */
-  estimateTokensFallback(): number {
-    let totalChars = 0;
-    for (const msg of this.messages) {
-      if (isModelMessage(msg) || isUserMessage(msg)) {
-        for (const block of msg.contents) {
-          if (block.type === "text") {
-            totalChars += block.text.length;
-          } else {
-            totalChars += JSON.stringify(block).length;
-          }
-        }
-      }
-
-      if (isModelMessage(msg) && msg.toolCalls) {
-        totalChars += JSON.stringify(msg.toolCalls).length;
-      }
-
-      if (isToolMessage(msg)) {
-        totalChars += JSON.stringify({
-          content: msg.result.content,
-          error: msg.result.error,
-          success: msg.result.success,
-        }).length;
-      }
-    }
-
-    // Rough estimation: average 2.5 characters = 1 token
-    return Math.floor(totalChars / 2.5);
-  }
-
-  /**
-   * Check and summarize message history if token limit exceeded.
-   *
-   * Strategy (Agent mode):
-   * - Keep all user messages (these are user intents)
-   * - Summarize content between each user-user pair (agent execution process)
-   * - If last round is still executing (has agent/tool messages but no next user), also summarize
-   * - Structure: system -> user1 -> summary1 -> user2 -> summary2 -> user3 -> summary3 (if executing)
-   *
-   * Summary is triggered when EITHER:
-   * - Local token estimation exceeds limit
-   * - API reported total_tokens exceeds limit
-   */
-  async summarizeMessages(): Promise<void> {
-    // Skip check if we just completed a summary (wait for next LLM call to update apiTotalTokens)
-    if (this.skipNextTokenCheck) {
-      this.skipNextTokenCheck = false;
-      return;
-    }
-
-    const estimatedTokens = this.estimateTokens();
-
-    // Check both local estimation and API reported tokens
-    const shouldSummarize =
-      estimatedTokens > this.tokenLimit ||
-      this.apiTotalTokens > this.tokenLimit;
-
-    // If neither exceeded, no summary needed
-    if (!shouldSummarize) {
-      return;
-    }
-
-    // this.events.emit(AgentEvents.summarizeMessagesStarted, {
-    //   localEstimatedTokens: estimatedTokens,
-    //   apiReportedTokens: this.apiTotalTokens,
-    //   tokenLimit: this.tokenLimit,
-    // });
-    this.logger.warn(
-      `Token limit exceeded (Local: ${estimatedTokens}, API: ${this.apiTotalTokens}, Limit: ${this.tokenLimit}). Summarizing message history...`,
-    );
-
-    // Find all user message indices (skip system prompt)
-    const userIndices = this.messages
-      .map((msg, index) => ({ msg, index }))
-      .filter(({ msg }) => isUserMessage(msg))
-      .map(({ index }) => index);
-
-    // Need at least 1 user message to perform summary
-    if (userIndices.length < 1) {
-      // this.events.emit(AgentEvents.summarizeMessagesFinished, {
-      //   ok: false,
-      //   msg: "Insufficient messages, cannot summarize.",
-      // });
-      this.logger.warn("Insufficient messages, cannot summarize.");
-      return;
-    }
-
-    // Build new message list
-    const newMessages: Message[] =
-      this.messages.length > 0 && this.messages[0].role !== "user"
-        ? [this.messages[0]]
-        : [];
-    let summaryCount = 0;
-
-    // Iterate through each user message and summarize the execution process after it
-    for (let i = 0; i < userIndices.length; i += 1) {
-      const userIdx = userIndices[i];
-      // Add current user message
-      newMessages.push(this.messages[userIdx]);
-
-      // Determine message range to summarize
-      // If last user, go to end of message list; otherwise to before next user
-      const nextUserIdx =
-        i < userIndices.length - 1 ? userIndices[i + 1] : this.messages.length;
-
-      // Extract execution messages for this round
-      const executionMessages = this.messages.slice(userIdx + 1, nextUserIdx);
-
-      // If there are execution messages in this round, summarize them
-      if (executionMessages.length > 0) {
-        const summaryText = await this.createSummary(executionMessages, i + 1);
-        if (summaryText) {
-          const summaryMessage: Message = {
-            role: "user",
-            contents: [
-              {
-                type: "text",
-                text: `[Model Execution Summary]\n\n${summaryText}`,
-              },
-            ],
-          };
-          newMessages.push(summaryMessage);
-          summaryCount += 1;
-        }
-      }
-    }
-
-    // Replace message list
-    this.messages = newMessages;
-
-    // Skip next token check to avoid consecutive summary triggers
-    // (apiTotalTokens will be updated after next LLM call)
-    this.skipNextTokenCheck = true;
-
-    const newTokens = this.estimateTokens();
-
-    // this.events.emit(AgentEvents.summarizeMessagesFinished, {
-    //   ok: true,
-    //   msg: "Summary completed and API token count will update on next LLM call.",
-    //   oldTokens: estimatedTokens,
-    //   newTokens: newTokens,
-    //   userMessageCount: userIndices.length,
-    //   summaryCount: summaryCount,
-    // });
-    this.logger.debug(
-      `Summary completed, local tokens: ${estimatedTokens} → ${newTokens}. API token count will update on next LLM call.`,
-    );
-  }
-
-  /** Create summary for one execution round. */
-  async createSummary(messages: Message[], roundNum: number): Promise<string> {
-    if (messages.length === 0) {
-      return "";
-    }
-
-    // Build summary content
-    let summaryContent = `Round ${roundNum} execution process:\n\n`;
-    for (const msg of messages) {
-      if (isModelMessage(msg)) {
-        const textParts =
-          msg.contents?.filter((c) => c.type === "text").map((c) => c.text) ??
-          [];
-        const contentText = textParts.join("\n");
-        summaryContent += `Assistant: ${contentText}\n`;
-        const toolCalls = msg.toolCalls ?? [];
-        if (toolCalls.length > 0) {
-          const toolNames = toolCalls.map((tc) => tc.name);
-          summaryContent += `  → Called tools: ${toolNames.join(", ")}\n`;
-        }
-      } else if (isToolMessage(msg)) {
-        const result = msg.result;
-        const preview = result.content || result.error || "";
-        summaryContent += `  ← Tool returned: ${preview}...\n`;
-      }
-    }
-
-    // Call LLM to generate concise summary
-    try {
-      const summaryPrompt = `Please provide a concise summary of the following Agent execution process:\n\n${summaryContent}\n\nRequirements:\n1. Focus on what tasks were completed and which tools were called\n2. Keep key execution results and important findings\n3. Be concise and clear, within 1000 words\n4. Use English\n5. Do not include "user" related content, only summarize the Agent's execution process`;
-
-      const summaryMsg: Message = {
-        role: "user",
-        contents: [{ type: "text", text: summaryPrompt }],
-      };
-      const response = await this.llmClient.generate([
-        {
-          role: "user",
-          contents: [
-            {
-              type: "text",
-              text: "You are an assistant skilled at summarizing Agent execution processes.",
-            },
-          ],
-        },
-        summaryMsg,
-      ]);
-
-      const summaryText =
-        (response.message.contents ?? [])
-          .filter((c) => c.type === "text")
-          .map((c) => c.text)
-          .join("\n") ?? "";
-
-      // this.events.emit(AgentEvents.createSummaryFinished, {
-      //   ok: true,
-      //   msg: "Summary generation succeeded.",
-      //   roundNum: roundNum,
-      //   summaryText: summaryText,
-      // });
-      this.logger.debug(
-        `Summary for round ${roundNum} generated successfully.`,
-        summaryText,
-      );
-      return summaryText;
-    } catch (error) {
-      // this.events.emit(AgentEvents.createSummaryFinished, {
-      //   ok: false,
-      //   msg: "Summary generation failed.",
-      //   roundNum: roundNum,
-      //   error: error as Error,
-      // });
-      this.logger.error(
-        `Summary generation failed for round ${roundNum}: ${(error as Error).message}`,
-      );
-      // Use simple text summary on failure
-      return summaryContent;
-    }
-  }
-
   /** Get message history (shallow copy). */
   getHistory(): Message[] {
     return [...this.messages];
@@ -520,10 +175,12 @@ export class Agent {
   /** Logger instance used for agent-related logging. */
   private logger: Logger = Logger.create({
     name: "agent",
-    level: "debug",
+    level: "full",
     transport: "console",
   });
   private status: "idle" | "running" = "idle";
+  private abortController: AbortController | null = null;
+  private abortRequested = false;
 
   constructor(
     /** Configuration for the agent. */
@@ -544,6 +201,14 @@ export class Agent {
     return this.status !== "idle";
   }
 
+  async abort(): Promise<void> {
+    if (!this.isRunning()) {
+      return;
+    }
+    this.abortRequested = true;
+    this.abortController?.abort();
+  }
+
   async runWithState(state: AgentState): Promise<void> {
     return this.run(async (loop) => {
       await loop(state);
@@ -557,6 +222,8 @@ export class Agent {
 
   async run(callback: AgentStateCallback2): Promise<void> {
     this.status = "running";
+    this.abortRequested = false;
+    this.abortController = new AbortController();
     let called = false;
     const loop = async (state: AgentState): Promise<void> => {
       if (called) {
@@ -566,8 +233,12 @@ export class Agent {
       this.contextManager.state = state;
       await this.mainLoop();
     };
-    await callback(loop);
-    this.status = "idle";
+    try {
+      await callback(loop);
+    } finally {
+      this.status = "idle";
+      this.abortController = null;
+    }
   }
 
   /** Execute agent loop until task is complete or max steps reached. */
@@ -576,14 +247,18 @@ export class Agent {
     const maxSteps = this.config.maxSteps;
     let step = 0;
 
-    while (step < maxSteps) {
-      // Check and summarize message history to prevent context overflow
-      await this.contextManager.summarizeMessages();
+    this.logger.debug("System prompt:", this.contextManager.systemPrompt);
 
-      // this.events.emit(AgentEvents.stepStarted, {
-      //   stepNumber: step + 1,
-      //   maxSteps: maxSteps,
-      // });
+    this.logger.debug(
+      `request ${this.contextManager.messages.length} messages`,
+      this.contextManager.messages,
+    );
+
+    while (step < maxSteps) {
+      if (this.abortRequested) {
+        this.finishAborted();
+        return;
+      }
       this.logger.debug(`Step ${step + 1}/${maxSteps}`);
 
       // Call LLM with context from context manager
@@ -593,12 +268,14 @@ export class Agent {
           this.contextManager.messages,
           this.contextManager.tools,
           this.contextManager.systemPrompt,
+          this.abortController?.signal,
         );
-        // this.events.emit(AgentEvents.llmResponseReceived, {
-        //   response: response,
-        // });
         this.logger.debug(`LLM response received.`, response);
       } catch (error) {
+        if (this.isAbortError(error)) {
+          this.finishAborted();
+          return;
+        }
         if (error instanceof RetryExhaustedError) {
           const errorMsg = `LLM call failed after ${error.attempts} retries. Last error: ${String(error.lastException)}`;
           this.events.emit(AgentEvents.runFinished, {
@@ -609,17 +286,14 @@ export class Agent {
           this.logger.error(errorMsg);
           return;
         }
-        // this.events.emit(AgentEvents.runFinished, {
-        //   ok: false,
-        //   msg: `LLM call failed.`,
-        //   error: error as Error,
-        // });
         this.logger.error(`LLM call failed: ${(error as Error).message}`);
         return;
       }
 
-      // Update API reported token usage in context manager
-      this.contextManager.updateApiTokens(response);
+      if (this.abortRequested) {
+        this.finishAborted();
+        return;
+      }
 
       // Add model message to context
       this.contextManager.addModelMessage(response);
@@ -639,15 +313,14 @@ export class Agent {
 
       // Execute tool calls
       for (const toolCall of response.message.toolCalls) {
+        if (this.abortRequested) {
+          this.finishAborted();
+          return;
+        }
         const toolCallId = toolCall.id;
         const functionName = toolCall.name;
         const callArgs = toolCall.args;
 
-        // this.events.emit(AgentEvents.toolCallStarted, {
-        //   toolCallId: toolCallId ?? "",
-        //   functionName: functionName,
-        //   callArgs: callArgs,
-        // });
         this.logger.debug(`Tool call [${functionName}]`, callArgs);
 
         // Execute tool
@@ -679,12 +352,6 @@ export class Agent {
 
         // Log tool execution result
         if (result.success) {
-          // this.events.emit(AgentEvents.toolCallFinished, {
-          //   ok: true,
-          //   toolCallId: toolCallId ?? "",
-          //   functionName: functionName,
-          //   result: result,
-          // });
           if (functionName === "ema_reply" && result.success) {
             this.events.emit(AgentEvents.emaReplyReceived, {
               reply: JSON.parse(result.content!),
@@ -693,12 +360,6 @@ export class Agent {
           }
           this.logger.debug(`Tool [${functionName}] done.`, result.content);
         } else {
-          // this.events.emit(AgentEvents.toolCallFinished, {
-          //   ok: false,
-          //   toolCallId: toolCallId ?? "",
-          //   functionName: functionName,
-          //   result: result,
-          // });
           this.logger.error(`Tool [${functionName}] failed.`, result.error);
         }
 
@@ -718,6 +379,22 @@ export class Agent {
     });
     this.logger.error(errorMsg);
     return;
+  }
+
+  private finishAborted(): void {
+    const error = new Error("Aborted");
+    this.events.emit(AgentEvents.runFinished, {
+      ok: false,
+      msg: error.message,
+      error,
+    });
+  }
+
+  private isAbortError(error: unknown): boolean {
+    return (
+      error instanceof Error &&
+      (error.name === "AbortError" || error.message === "Aborted")
+    );
   }
 
   /** Get message history. */

@@ -24,11 +24,13 @@ export abstract class LLMClientBase {
     apiMessages: Record<string, unknown>[],
     apiTools?: Record<string, unknown>[],
     systemPrompt?: string,
+    signal?: AbortSignal,
   ): Promise<any>;
 
   abstract generate(
     messages: Message[],
     tools?: Tool[],
     systemPrompt?: string,
+    signal?: AbortSignal,
   ): Promise<LLMResponse>;
 }

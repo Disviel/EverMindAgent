@@ -95,6 +95,9 @@ export function asyncRetry(
           return await originalMethod.apply(this, args);
         } catch (exception) {
           lastException = exception as Error;
+          if (isAbortError(lastException)) {
+            throw lastException;
+          }
           if (attempt >= config.max_retries) {
             console.error(
               `Function ${propertyKey} retry failed, reached maximum retry count ${config.max_retries}`,
@@ -125,6 +128,14 @@ export function asyncRetry(
     };
     return descriptor;
   };
+}
+
+function isAbortError(error: Error): boolean {
+  return (
+    error.name === "AbortError" ||
+    error.message.includes("aborted") ||
+    error.message.includes("aborted request")
+  );
 }
 
 /**

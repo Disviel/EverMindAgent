@@ -120,7 +120,7 @@ async function main(): Promise<void> {
     if (userInput === "/exit" || userInput === "/quit") {
       break;
     }
-    await actor.work([{ kind: "text", content: userInput }]);
+    await actor.work(1, [{ type: "text", text: userInput }]);
     // To avoid the last log from being printed after "YOU >"
     // It will be removed when we implement repl.ts
     await new Promise((resolve) => setTimeout(resolve, 100));

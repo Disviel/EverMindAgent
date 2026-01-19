@@ -32,6 +32,29 @@
   width: 100%;
   margin-left: auto;
   margin-right: auto;
+  padding-right: 0.5rem;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: #4b4b4b #1f1f1f;
+}
+
+.chatArea::-webkit-scrollbar {
+  width: 10px;
+}
+
+.chatArea::-webkit-scrollbar-track {
+  background: #1f1f1f;
+  border-radius: 999px;
+}
+
+.chatArea::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #3a3a3a, #555);
+  border-radius: 999px;
+  border: 2px solid #1f1f1f;
+}
+
+.chatArea::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #4a4a4a, #666);
 }
 
 .emptyState {
@@ -47,6 +70,11 @@
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+}
+
+.messagesEnd {
+  height: 1px;
+  width: 100%;
 }
 
 .message {
