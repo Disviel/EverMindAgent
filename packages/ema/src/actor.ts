@@ -114,7 +114,7 @@ export class ActorWorker implements ActorStateStorage, ActorMemory {
       bufferWindow.length === 0
         ? "None."
         : bufferWindow.map((item) => bufferMessageToPrompt(item)).join("\n");
-    return systemPrompt.replace("{MEMORY_BUFFER}", bufferText);
+    return systemPrompt.replaceAll("{MEMORY_BUFFER}", bufferText);
   }
 
   /**

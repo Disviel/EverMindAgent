@@ -10,7 +10,7 @@ export class FetchWithProxy {
   constructor(
     /**
      * A proxy URL to use for the fetch.
-     * If empty, the requests are send without http proxy.
+     * If empty, the requests are sent without http proxy.
      */
     https_proxy?: string,
   ) {
