@@ -320,7 +320,7 @@ export type ConversationMessage =
  */
 export interface ConversationUserMessage {
   /**
-   * `user`: an message from the user
+   * `user`: a message from the user
    */
   kind: "user";
   /**
@@ -338,7 +338,7 @@ export interface ConversationUserMessage {
  */
 export interface ConversationActorMessage {
   /**
-   * `actor`: an message from the actor
+   * `actor`: a message from the actor
    */
   kind: "actor";
   /**
