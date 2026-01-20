@@ -151,11 +151,6 @@ export class ActorWorker implements ActorStateStorage, ActorMemory {
     this.enqueueBufferWrite(bufferMessage);
 
     if (this.isBusy()) {
-      // Abort the current run if no ema reply has been produced yet.
-      // if (!this.hasEmaReplyInRun) {
-      //   this.resumeStateAfterAbort = true;
-      //   await this.abortCurrentRun();
-      // }
       this.resumeStateAfterAbort = !this.hasEmaReplyInRun;
       await this.abortCurrentRun();
       return;
@@ -175,7 +170,7 @@ export class ActorWorker implements ActorStateStorage, ActorMemory {
     if (isAgentEvent(content, "emaReplyReceived")) {
       const reply = content.content.reply;
       this.hasEmaReplyInRun = true;
-      this.enqueueBufferWrite(bufferMessageFromEma(this.userId, reply));
+      this.enqueueBufferWrite(bufferMessageFromEma(this.actorId, reply));
     }
     this.events.emit(event, content);
   }
@@ -397,33 +392,6 @@ export interface ActorEventSource {
 }
 
 export type ActorEventsEmitter = EventEmitter<ActorEventMap> & ActorEventSource;
-
-// /**
-//  * A history of newly produced actor events since agent started.
-//  */
-// class EventHistory {
-//   /** The index of the current event. */
-//   eventIdx = 0;
-//   /** The list of events. */
-//   events: ActorEventUnion[] = [];
-
-//   /** Pushes an event to the history. */
-//   push(event: ActorEventUnion) {
-//     this.events.push(event);
-//   }
-
-//   /** Advances the history to the next event. */
-//   advance() {
-//     const events = this.events.slice(this.eventIdx);
-//     this.eventIdx += events.length;
-//     return events;
-//   }
-
-//   /** Gets the past events. */
-//   pastEvents() {
-//     return this.events.slice(0, this.eventIdx);
-//   }
-// }
 
 export function isAgentEvent<K extends AgentEventName | undefined>(
   event: ActorEventUnion,
