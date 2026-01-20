@@ -268,6 +268,11 @@ export class ActorWorker implements ActorStateStorage, ActorMemory {
         }
       }
     } finally {
+      // TODO: Need to verify whether LLM is correct later.
+      // this.processingQueue = false;
+      // if (this.queue.length > 0) {
+      //   void this.processQueue();
+      // }
       this.processingQueue = false;
     }
   }
