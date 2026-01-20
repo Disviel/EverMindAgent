@@ -1,9 +1,5 @@
 import { EventEmitter } from "node:events";
-
-import { Tiktoken } from "js-tiktoken";
-import cl100k_base from "js-tiktoken/ranks/cl100k_base";
-
-import type { LLMClient } from "./llm";
+import { type LLMClient } from "./llm";
 import { AgentConfig } from "./config";
 import { Logger } from "./logger";
 import { RetryExhaustedError, isAbortError } from "./retry";
@@ -18,62 +14,57 @@ import {
 import type { Tool, ToolResult } from "./tools/base";
 import type { EmaReply } from "./tools/ema_reply_tool";
 
-const AgentEventDefs = {
-  /* Emitted when the agent finished a run. */
-  runFinished: {} as
-    | { ok: true; msg: string }
-    | { ok: false; msg: string; error: Error },
-  /* Emitted when the ema_reply is called successfully. */
-  emaReplyReceived: {} as { reply: EmaReply },
-} as const;
-
-export type AgentEventName = keyof typeof AgentEventDefs;
-
-export type AgentEventContents = {
-  [K in AgentEventName]: (typeof AgentEventDefs)[K];
-};
-
-export type AgentEventContent<K extends AgentEventName = AgentEventName> =
-  (typeof AgentEventDefs)[K];
-
-export class AgentEventsEmitter {
-  private readonly emitter = new EventEmitter();
-
-  emit<K extends AgentEventName>(
-    event: K,
-    content: AgentEventContent<K>,
-  ): boolean {
-    return this.emitter.emit(event, content);
-  }
-
-  on<K extends AgentEventName>(
-    event: K,
-    handler: (content: AgentEventContent<K>) => void,
-  ): AgentEventsEmitter {
-    this.emitter.on(event, handler);
-    return this;
-  }
-
-  off<K extends AgentEventName>(
-    event: K,
-    handler: (content: AgentEventContent<K>) => void,
-  ): AgentEventsEmitter {
-    this.emitter.off(event, handler);
-    return this;
-  }
-
-  once<K extends AgentEventName>(
-    event: K,
-    handler: (content: AgentEventContent<K>) => void,
-  ): AgentEventsEmitter {
-    this.emitter.once(event, handler);
-    return this;
-  }
+/** Event emitted when the agent finishes a run. */
+export interface RunFinishedEvent {
+  ok: boolean;
+  msg: string;
+  error?: Error;
 }
 
-export const AgentEvents = Object.fromEntries(
-  Object.keys(AgentEventDefs).map((key) => [key, key]),
-) as { [K in AgentEventName]: K };
+/* Emitted when the ema_reply tool is called successfully. */
+export interface EmaReplyReceivedEvent {
+  reply: EmaReply;
+}
+
+/** Map of agent event names to their corresponding event data types. */
+export interface AgentEventMap {
+  runFinished: [RunFinishedEvent];
+  emaReplyReceived: [EmaReplyReceivedEvent];
+}
+
+/** Union type of all agent event names. */
+export type AgentEventName = keyof AgentEventMap;
+
+/** Type mapping of agent event names to their corresponding event data types. */
+export type AgentEvent<K extends AgentEventName> = AgentEventMap[K][0];
+
+/** Union type of all agent event contents. */
+export type AgentEventUnion = AgentEvent<AgentEventName>;
+
+/** Constant mapping of agent event names for iteration */
+export const AgentEventNames: Record<AgentEventName, AgentEventName> = {
+  runFinished: "runFinished",
+  emaReplyReceived: "emaReplyReceived",
+};
+
+/** Event source interface for the agent. */
+export interface AgentEventSource {
+  on<K extends AgentEventName>(
+    event: K,
+    handler: (content: AgentEvent<K>) => void,
+  ): this;
+  off<K extends AgentEventName>(
+    event: K,
+    handler: (content: AgentEvent<K>) => void,
+  ): this;
+  once<K extends AgentEventName>(
+    event: K,
+    handler: (content: AgentEvent<K>) => void,
+  ): this;
+  emit<K extends AgentEventName>(event: K, content: AgentEvent<K>): boolean;
+}
+
+export type AgentEventsEmitter = EventEmitter<AgentEventMap> & AgentEventSource;
 
 /** The state of the agent. */
 export type AgentState = {
@@ -169,7 +160,8 @@ export class ContextManager {
 /** Single agent with basic tools and MCP support. */
 export class Agent {
   /** Event emitter for agent lifecycle notifications. */
-  readonly events: AgentEventsEmitter = new AgentEventsEmitter();
+  readonly events: AgentEventsEmitter =
+    new EventEmitter<AgentEventMap>() as AgentEventsEmitter;
   /** Manages conversation context, history, and available tools. */
   private contextManager: ContextManager;
   /** Logger instance used for agent-related logging. */
@@ -278,7 +270,7 @@ export class Agent {
         }
         if (error instanceof RetryExhaustedError) {
           const errorMsg = `LLM call failed after ${error.attempts} retries. Last error: ${String(error.lastException)}`;
-          this.events.emit(AgentEvents.runFinished, {
+          this.events.emit("runFinished", {
             ok: false,
             msg: errorMsg,
             error: error as RetryExhaustedError,
@@ -303,7 +295,7 @@ export class Agent {
         !response.message.toolCalls ||
         response.message.toolCalls.length === 0
       ) {
-        this.events.emit(AgentEvents.runFinished, {
+        this.events.emit("runFinished", {
           ok: true,
           msg: response.finishReason,
         });
@@ -353,7 +345,7 @@ export class Agent {
         // Log tool execution result
         if (result.success) {
           if (functionName === "ema_reply" && result.success) {
-            this.events.emit(AgentEvents.emaReplyReceived, {
+            this.events.emit("emaReplyReceived", {
               reply: JSON.parse(result.content!),
             });
             result.content = undefined;
@@ -372,7 +364,7 @@ export class Agent {
 
     // Max steps reached
     const errorMsg = `Task couldn't be completed after ${maxSteps} steps.`;
-    this.events.emit(AgentEvents.runFinished, {
+    this.events.emit("runFinished", {
       ok: false,
       msg: errorMsg,
       error: new Error(errorMsg),
@@ -383,7 +375,7 @@ export class Agent {
 
   private finishAborted(): void {
     const error = new Error("Aborted");
-    this.events.emit(AgentEvents.runFinished, {
+    this.events.emit("runFinished", {
       ok: false,
       msg: error.message,
       error,

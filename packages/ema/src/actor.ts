@@ -1,6 +1,6 @@
 import type { Config } from "./config";
-import { Agent, AgentEvents } from "./agent";
-import type { AgentEventName, AgentEventContent } from "./agent";
+import { Agent, AgentEventNames } from "./agent";
+import type { AgentEventName, AgentEvent } from "./agent";
 import type {
   ActorDB,
   LongTermMemoryDB,
@@ -23,7 +23,7 @@ import type {
   ActorMemory,
 } from "./memory/memory";
 import { Logger } from "./logger";
-import type { Content, UserMessage } from "./schema";
+import type { Content } from "./schema";
 import { LLMClient } from "./llm";
 import { type AgentState } from "./agent";
 
@@ -83,12 +83,18 @@ export class ActorWorker implements ActorStateStorage, ActorMemory {
   ) {
     const llm = new LLMClient(this.config.llm);
     this.agent = new Agent(config.agent, llm);
-    (Object.keys(AgentEvents) as AgentEventName[]).forEach((eventName) => {
-      const handler = (content: AgentEventContent) => {
-        this.emitEvent({ type: eventName, content: content });
-      };
-      this.agent.events.on(eventName, handler);
-    });
+    this.bindAgentEvent();
+  }
+
+  private bindAgentEvent(
+    events: AgentEventName[] = Object.values(AgentEventNames),
+  ) {
+    const bind = <K extends AgentEventName>(eventName: K) => {
+      this.agent.events.on(eventName, (content: AgentEvent<K>) => {
+        this.emitEvent({ type: eventName, content });
+      });
+    };
+    events.forEach(bind);
   }
 
   /**
@@ -198,7 +204,7 @@ export class ActorWorker implements ActorStateStorage, ActorMemory {
    * @param event - The event to emit.
    */
   private emitEvent(event: ActorEvent) {
-    if (isAgentEvent(event, AgentEvents.emaReplyReceived)) {
+    if (isAgentEvent(event, "emaReplyReceived")) {
       const reply = event.content.reply;
       this.hasEmaReplyInRun = true;
       this.enqueueBufferWrite(bufferMessageFromEma(this.userId, reply));
@@ -375,7 +381,7 @@ export type ActorStatus = "preparing" | "running" | "idle";
 /**
  * A event from the actor.
  */
-export type ActorEvent = ActorMessage | AgentEvent;
+export type ActorEvent = ActorMessage | EventFromAgent;
 
 /**
  * Type guard that narrows an actor event to a specific agent event (or any agent event).
@@ -383,10 +389,10 @@ export type ActorEvent = ActorMessage | AgentEvent;
 export function isAgentEvent<K extends AgentEventName | undefined>(
   event: ActorEvent | undefined,
   type?: K,
-): event is AgentEvent &
+): event is EventFromAgent &
   (K extends AgentEventName
-    ? { type: K; content: AgentEventContent<K> }
-    : AgentEvent) {
+    ? { type: K; content: AgentEvent<K> }
+    : EventFromAgent) {
   if (!event) return false;
   if (event.type === "message") return false;
   return type ? event.type === type : true;
@@ -404,11 +410,11 @@ export interface ActorMessage {
 /**
  * A event from the agent.
  */
-export interface AgentEvent {
+export interface EventFromAgent {
   /** The type of the event. */
   type: AgentEventName;
   /** The content of the event. */
-  content: AgentEventContent<AgentEventName>;
+  content: AgentEvent<AgentEventName>;
 }
 
 /**
