@@ -1,12 +1,13 @@
-import type { EmaMessage, UserMessage } from "../schema";
+import type { Content } from "../schema";
 
 /**
  * Represents a persisted message with metadata for buffer history.
  */
 export interface BufferMessage {
-  id: number;
+  kind: "user" | "actor";
   name: string;
-  message: UserMessage | EmaMessage;
+  id: number;
+  contents: Content[];
   time: number;
 }
 
@@ -28,10 +29,6 @@ export interface ActorStateStorage {
 }
 
 export interface ActorState {
-  /**
-   * The memory buffer containing lightweight historical messages.
-   */
-  memoryBuffer: BufferMessage[];
   // more state can be added here.
 }
 

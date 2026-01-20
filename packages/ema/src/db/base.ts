@@ -1,4 +1,4 @@
-import type { Message } from "../schema";
+import type { Content } from "../schema";
 
 /**
  * Represents an entity in the database
@@ -88,10 +88,6 @@ export interface ActorEntity extends Entity {
    * Each actor has exactly one role
    */
   roleId: number;
-  /**
-   * The memory buffer
-   */
-  memoryBuffer: Message[];
   /**
    * The date and time the actor was last updated
    */
@@ -307,9 +303,52 @@ export interface ConversationMessageEntity extends Entity {
    */
   conversationId: number;
   /**
-   * The message
+   * The conversation message
    */
-  message: Message;
+  message: ConversationMessage;
+}
+
+/**
+ * Represents conversation message
+ */
+export type ConversationMessage =
+  | ConversationUserMessage
+  | ConversationActorMessage;
+
+/**
+ * Represents conversation message from the user
+ */
+export interface ConversationUserMessage {
+  /**
+   * `user`: an message from the user
+   */
+  kind: "user";
+  /**
+   * The user ID
+   */
+  userId: number;
+  /**
+   * The message content
+   */
+  contents: Content[];
+}
+
+/**
+ * Represents conversation message from the actor
+ */
+export interface ConversationActorMessage {
+  /**
+   * `actor`: an message from the actor
+   */
+  kind: "actor";
+  /**
+   * The actor ID
+   */
+  actorId: number;
+  /**
+   * The message content
+   */
+  contents: Content[];
 }
 
 /**

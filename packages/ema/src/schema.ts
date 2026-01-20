@@ -26,14 +26,6 @@ export interface UserMessage {
   contents: Content[];
 }
 
-/** EMA-originated message. */
-export interface EmaMessage {
-  /** Role marker. */
-  role: "ema";
-  /** Ordered list of content blocks. */
-  contents: Content[];
-}
-
 /** LLM-generated message, optionally containing tool calls. */
 export interface ModelMessage {
   /** Role marker. */
@@ -60,7 +52,7 @@ export interface ToolMessage {
 }
 
 /** Union of all supported message kinds. */
-export type Message = UserMessage | EmaMessage | ModelMessage | ToolMessage;
+export type Message = UserMessage | ModelMessage | ToolMessage;
 
 /** Normalized LLM response envelope. */
 export interface LLMResponse {
@@ -95,9 +87,4 @@ export function isModelMessage(message: Message): message is ModelMessage {
 /** Type guard for user messages. */
 export function isUserMessage(message: Message): message is UserMessage {
   return message.role === "user";
-}
-
-/** Type guard for EMA messages. */
-export function isEmaMessage(message: Message): message is EmaMessage {
-  return message.role === "ema";
 }

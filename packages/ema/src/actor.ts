@@ -32,6 +32,7 @@ import { type AgentState } from "./agent";
  * A facade of the actor functionalities between the server (system) and the agent (actor).
  */
 export class ActorWorker implements ActorStateStorage, ActorMemory {
+  /** Event emitter for actor events. */
   readonly events: ActorEventsEmitter =
     new EventEmitter<ActorEventMap>() as ActorEventsEmitter;
   /** The agent instance. */
@@ -170,7 +171,7 @@ export class ActorWorker implements ActorStateStorage, ActorMemory {
     if (isAgentEvent(content, "emaReplyReceived")) {
       const reply = content.content.reply;
       this.hasEmaReplyInRun = true;
-      this.enqueueBufferWrite(bufferMessageFromEma(this.actorId, reply));
+      this.enqueueBufferWrite(bufferMessageFromEma(this.actorId, "EMA", reply));
     }
     this.events.emit(event, content);
   }

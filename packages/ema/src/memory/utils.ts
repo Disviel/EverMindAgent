@@ -1,5 +1,4 @@
 import dayjs from "dayjs";
-
 import type { Content, UserMessage } from "../schema";
 import type { EmaReply } from "../tools/ema_reply_tool";
 import type { BufferMessage } from "./memory";
@@ -12,8 +11,8 @@ import type { BufferMessage } from "./memory";
 export function bufferMessageToUserMessage(
   message: BufferMessage,
 ): UserMessage {
-  if (message.message.role !== "user") {
-    throw new Error(`Expected user message, got ${message.message.role}`);
+  if (message.kind !== "user") {
+    throw new Error(`Expected user message, got ${message.kind}`);
   }
   const context = [
     "<CONTEXT>",
@@ -24,7 +23,7 @@ export function bufferMessageToUserMessage(
   ].join("\n");
   return {
     role: "user",
-    contents: [{ type: "text", text: context }, ...message.message.contents],
+    contents: [{ type: "text", text: context }, ...message.contents],
   };
 }
 
@@ -34,11 +33,11 @@ export function bufferMessageToUserMessage(
  * @returns Prompt line containing time, role, id, name, and content.
  */
 export function bufferMessageToPrompt(message: BufferMessage): string {
-  const contents = message.message.contents
+  const contents = message.contents
     .map((part) => (part.type === "text" ? part.text : JSON.stringify(part)))
     .join("\n");
   return `- [${dayjs(message.time).format("YYYY-MM-DD HH:mm:ss")}][role:${
-    message.message.role
+    message.kind
   }][id:${message.id}][name:${message.name}] ${contents}`;
 }
 
@@ -57,9 +56,10 @@ export function bufferMessageFromUser(
   time: number = Date.now(),
 ): BufferMessage {
   return {
-    id: userId,
+    kind: "user",
     name: userName,
-    message: { role: "user", contents: inputs },
+    id: userId,
+    contents: inputs,
     time,
   };
 }
@@ -67,22 +67,22 @@ export function bufferMessageFromUser(
 /**
  * Builds a buffer message from an EMA reply.
  * @param actorId - Actor identifier.
+ * @param actorName - Actor display name.
  * @param reply - EMA reply payload.
  * @param time - Optional timestamp (milliseconds since epoch).
  * @returns BufferMessage representing the EMA reply.
  */
 export function bufferMessageFromEma(
   actorId: number,
+  actorName: string,
   reply: EmaReply,
   time: number = Date.now(),
 ): BufferMessage {
   return {
+    kind: "actor",
+    name: actorName,
     id: actorId,
-    name: "ema",
-    message: {
-      role: "ema",
-      contents: [{ type: "text", text: JSON.stringify(reply) }],
-    },
+    contents: [{ type: "text", text: JSON.stringify(reply) }],
     time,
   };
 }
