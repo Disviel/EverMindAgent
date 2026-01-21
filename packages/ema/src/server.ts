@@ -206,15 +206,23 @@ export class Server {
    *
    * @example
    * // Example usage:
-   * const user = server.login();
+   * const user = await server.login();
    * console.log(user.id); // 1
    */
-  login(): { id: number; name: string; email: string } {
-    return {
+  async login(): Promise<{ id: number; name: string; email: string }> {
+    const user = {
       id: 1,
       name: "alice",
       email: "alice@example.com",
     };
+    await this.userDB.upsertUser({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      description: "",
+      avatar: "",
+    });
+    return user;
   }
 
   /**
@@ -238,6 +246,10 @@ export class Server {
         this.longTermMemoryVectorSearcher,
       );
       this.actors.set(actorId, actor);
+      await this.userOwnActorDB.addActorToUser({
+        userId: _userId,
+        actorId,
+      });
     }
     return actor;
   }
