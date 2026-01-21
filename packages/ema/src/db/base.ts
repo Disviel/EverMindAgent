@@ -49,6 +49,17 @@ export interface CreatedField {
 }
 
 /**
+ * Interface for databases that support index creation.
+ */
+export interface IndexableDB {
+  /**
+   * Creates indices for the database collection.
+   * @returns Promise resolving when indices are created.
+   */
+  createIndices(): Promise<void>;
+}
+
+/**
  * Interface for role database operations
  */
 export interface RoleDB {

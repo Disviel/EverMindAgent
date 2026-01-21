@@ -28,6 +28,7 @@ import type {
   ConversationMessageDB,
   ShortTermMemoryDB,
   LongTermMemoryDB,
+  IndexableDB,
 } from "./db/base";
 import type { Fs } from "./fs";
 import { RealFs } from "./fs";
@@ -47,13 +48,15 @@ export class Server {
   lancedb!: lancedb.Connection;
 
   roleDB!: RoleDB & MongoCollectionGetter;
-  actorDB!: ActorDB & MongoCollectionGetter;
-  userDB!: UserDB & MongoCollectionGetter;
-  userOwnActorDB!: UserOwnActorDB & MongoCollectionGetter;
-  conversationDB!: ConversationDB & MongoCollectionGetter;
-  conversationMessageDB!: ConversationMessageDB & MongoCollectionGetter;
-  shortTermMemoryDB!: ShortTermMemoryDB & MongoCollectionGetter;
-  longTermMemoryDB!: LongTermMemoryDB & MongoCollectionGetter;
+  actorDB!: ActorDB & MongoCollectionGetter & IndexableDB;
+  userDB!: UserDB & MongoCollectionGetter & IndexableDB;
+  userOwnActorDB!: UserOwnActorDB & MongoCollectionGetter & IndexableDB;
+  conversationDB!: ConversationDB & MongoCollectionGetter & IndexableDB;
+  conversationMessageDB!: ConversationMessageDB &
+    MongoCollectionGetter &
+    IndexableDB;
+  shortTermMemoryDB!: ShortTermMemoryDB & MongoCollectionGetter & IndexableDB;
+  longTermMemoryDB!: LongTermMemoryDB & MongoCollectionGetter & IndexableDB;
   longTermMemoryVectorSearcher!: MongoMemorySearchAdaptor &
     MongoCollectionGetter;
 
@@ -93,7 +96,16 @@ export class Server {
       }
     }
 
-    await server.longTermMemoryVectorSearcher.createIndices();
+    await Promise.all([
+      server.actorDB.createIndices(),
+      server.userDB.createIndices(),
+      server.userOwnActorDB.createIndices(),
+      server.conversationDB.createIndices(),
+      server.conversationMessageDB.createIndices(),
+      server.shortTermMemoryDB.createIndices(),
+      server.longTermMemoryDB.createIndices(),
+      server.longTermMemoryVectorSearcher.createIndices(),
+    ]);
 
     return server;
   }
