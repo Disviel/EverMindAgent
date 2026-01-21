@@ -14,41 +14,67 @@ export default function ChatPage() {
 
   // Set up SSE connection to subscribe to actor events
   useEffect(() => {
-    const eventSource = new EventSource(
-      "/api/actor/sse?userId=1&actorId=1&conversationId=1",
-    );
+    let eventSource: EventSource | null = null;
+    let isActive = true;
 
-    eventSource.onmessage = (event) => {
+    const init = async () => {
       try {
-        const evt = JSON.parse(event.data) as ActorAgentEvent;
-        const content = evt.content;
-        if (
-          evt.kind === "emaReplyReceived" &&
-          typeof content === "object" &&
-          "reply" in content
-        ) {
-          setMessages((prev) => [
-            ...prev,
-            {
-              role: "model",
-              contents: [{ type: "text", text: content.reply.response }],
-            },
-          ]);
+        const response = await fetch(
+          "/api/conversations/messages?conversationId=1&limit=100",
+        );
+        if (response.ok) {
+          const data = (await response.json()) as { messages: Message[] };
+          if (isActive && Array.isArray(data.messages)) {
+            setMessages(data.messages);
+          }
         }
       } catch (error) {
-        console.error("Error parsing SSE event:", error);
+        console.error("Error loading history:", error);
       }
+
+      if (!isActive) {
+        return;
+      }
+
+      eventSource = new EventSource(
+        "/api/actor/sse?userId=1&actorId=1&conversationId=1",
+      );
+
+      eventSource.onmessage = (event) => {
+        try {
+          const evt = JSON.parse(event.data) as ActorAgentEvent;
+          const content = evt.content;
+          if (
+            evt.kind === "emaReplyReceived" &&
+            typeof content === "object" &&
+            "reply" in content
+          ) {
+            setMessages((prev) => [
+              ...prev,
+              {
+                role: "model",
+                contents: [{ type: "text", text: content.reply.response }],
+              },
+            ]);
+          }
+        } catch (error) {
+          console.error("Error parsing SSE event:", error);
+        }
+      };
+
+      eventSource.onerror = (error) => {
+        // todo: reconnect
+        console.error("SSE connection error:", error);
+        eventSource?.close();
+      };
     };
 
-    eventSource.onerror = (error) => {
-      // todo: reconnect
-      console.error("SSE connection error:", error);
-      eventSource.close();
-    };
+    void init();
 
     // Cleanup on unmount (EventSource.close() is safe to call multiple times)
     return () => {
-      eventSource.close();
+      isActive = false;
+      eventSource?.close();
     };
   }, []);
 
