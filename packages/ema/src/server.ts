@@ -40,6 +40,7 @@ import { ActorWorker } from "./actor";
  */
 export class Server {
   actors: Map<string, ActorWorker> = new Map();
+  private actorInFlight: Map<string, Promise<ActorWorker>> = new Map();
 
   config: Config;
   private llmClient: LLMClient;
@@ -245,33 +246,45 @@ export class Server {
     const key = this.actorKey(userId, actorId, conversationId);
     let actor = this.actors.get(key);
     if (!actor) {
-      const user = await this.userDB.getUser(userId);
-      const actorName = "EMA";
-      const userName = user?.name || "User";
-      await this.conversationDB.upsertConversation({
-        id: conversationId,
-        name: "default",
-        actorId,
-        userId,
-      });
-      actor = new ActorWorker(
-        this.config,
-        userId,
-        userName,
-        actorId,
-        actorName,
-        conversationId,
-        this.actorDB,
-        this.conversationMessageDB,
-        this.shortTermMemoryDB,
-        this.longTermMemoryDB,
-        this.longTermMemoryVectorSearcher,
-      );
-      this.actors.set(key, actor);
-      await this.userOwnActorDB.addActorToUser({
-        userId,
-        actorId,
-      });
+      let inFlight = this.actorInFlight.get(key);
+      if (!inFlight) {
+        inFlight = (async () => {
+          const user = await this.userDB.getUser(userId);
+          const actorName = "EMA";
+          const userName = user?.name || "User";
+          await this.conversationDB.upsertConversation({
+            id: conversationId,
+            name: "default",
+            actorId,
+            userId,
+          });
+          const created = new ActorWorker(
+            this.config,
+            userId,
+            userName,
+            actorId,
+            actorName,
+            conversationId,
+            this.actorDB,
+            this.conversationMessageDB,
+            this.shortTermMemoryDB,
+            this.longTermMemoryDB,
+            this.longTermMemoryVectorSearcher,
+          );
+          this.actors.set(key, created);
+          await this.userOwnActorDB.addActorToUser({
+            userId,
+            actorId,
+          });
+          return created;
+        })();
+        this.actorInFlight.set(key, inFlight);
+      }
+      try {
+        actor = await inFlight;
+      } finally {
+        this.actorInFlight.delete(key);
+      }
     }
     return actor;
   }
