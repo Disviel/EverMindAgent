@@ -19,6 +19,12 @@ export default function ChatPage() {
 
     const init = async () => {
       try {
+        await fetch("/api/users/login");
+      } catch (error) {
+        console.error("Error logging in:", error);
+      }
+
+      try {
         const response = await fetch(
           "/api/conversations/messages?conversationId=1&limit=100",
         );

@@ -4,39 +4,19 @@
 
 import { getServer } from "../../shared-server";
 import type { Message } from "ema";
+import * as k from "arktype";
+import { getQuery } from "../../utils";
 
-export async function GET(request: Request) {
+const ConversationMessagesRequest = k.type({
+  conversationId: "string.numeric",
+  "limit?": "string.numeric",
+});
+
+export const GET = getQuery(ConversationMessagesRequest)(async (query) => {
   const server = await getServer();
-  const url = new URL(request.url);
-  const rawConversationId = url.searchParams.get("conversationId");
-  const rawLimit = url.searchParams.get("limit");
-
-  if (!rawConversationId) {
-    return new Response(
-      JSON.stringify({ error: "conversationId is required" }),
-      { status: 400, headers: { "Content-Type": "application/json" } },
-    );
-  }
-
-  const conversationId = Number.parseInt(rawConversationId, 10);
-  if (Number.isNaN(conversationId)) {
-    return new Response(
-      JSON.stringify({ error: "conversationId must be a number" }),
-      { status: 400, headers: { "Content-Type": "application/json" } },
-    );
-  }
-
-  let limit: number | undefined;
-  if (rawLimit !== null) {
-    const parsed = Number.parseInt(rawLimit, 10);
-    if (Number.isNaN(parsed)) {
-      return new Response(JSON.stringify({ error: "limit must be a number" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-    limit = parsed;
-  }
+  const conversationId = Number.parseInt(query.conversationId, 10);
+  const limit =
+    query.limit !== undefined ? Number.parseInt(query.limit, 10) : undefined;
 
   const rows = await server.conversationMessageDB.listConversationMessages({
     conversationId,
@@ -56,4 +36,4 @@ export async function GET(request: Request) {
     status: 200,
     headers: { "Content-Type": "application/json" },
   });
-}
+});

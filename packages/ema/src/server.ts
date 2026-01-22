@@ -220,12 +220,24 @@ export class Server {
       name: "alice",
       email: "alice@example.com",
     };
+    const actor = {
+      id: 1,
+      roleId: 1,
+    };
     await this.userDB.upsertUser({
       id: user.id,
       name: user.name,
       email: user.email,
       description: "",
       avatar: "",
+    });
+    await this.actorDB.upsertActor({
+      id: actor.id,
+      roleId: actor.roleId,
+    });
+    await this.userOwnActorDB.addActorToUser({
+      userId: user.id,
+      actorId: actor.id,
     });
     return user;
   }
@@ -272,10 +284,6 @@ export class Server {
             this.longTermMemoryVectorSearcher,
           );
           this.actors.set(key, created);
-          await this.userOwnActorDB.addActorToUser({
-            userId,
-            actorId,
-          });
           return created;
         })();
         this.actorInFlight.set(key, inFlight);
