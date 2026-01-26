@@ -4,6 +4,11 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  '@hokify/agenda@6.3.0':
+    hash: 106461c8850a7c4fd73b7f49b2d626d14118dc90fcf4ac7195b7f66ae0e8bfc6
+    path: patches/@hokify__agenda@6.3.0.patch
+
 importers:
 
   .:
@@ -60,7 +65,7 @@ importers:
         version: 1.34.0(@modelcontextprotocol/sdk@1.25.1(hono@4.11.1)(zod@4.2.1))
       '@hokify/agenda':
         specifier: ^6.3.0
-        version: 6.3.0
+        version: 6.3.0(patch_hash=106461c8850a7c4fd73b7f49b2d626d14118dc90fcf4ac7195b7f66ae0e8bfc6)
       '@lancedb/lancedb':
         specifier: ^0.23.0
         version: 0.23.0(apache-arrow@18.1.0)
@@ -85,6 +90,9 @@ importers:
       mongodb:
         specifier: ^7.0.0
         version: 7.0.0(@aws-sdk/credential-providers@3.974.0)(socks@2.8.7)
+      mongodb-agenda:
+        specifier: npm:mongodb@4.17.2
+        version: mongodb@4.17.2
       mongodb-memory-server:
         specifier: ^11.0.0
         version: 11.0.0(@aws-sdk/credential-providers@3.974.0)(socks@2.8.7)
@@ -143,6 +151,9 @@ importers:
       mongodb:
         specifier: ^7.0.0
         version: 7.0.0(@aws-sdk/credential-providers@3.974.0)(socks@2.8.7)
+      mongodb-agenda:
+        specifier: npm:mongodb@4.17.2
+        version: mongodb@4.17.2
       next:
         specifier: 16.0.10
         version: 16.0.10(@babel/core@7.28.5)(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
@@ -5451,7 +5462,7 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@hokify/agenda@6.3.0':
+  '@hokify/agenda@6.3.0(patch_hash=106461c8850a7c4fd73b7f49b2d626d14118dc90fcf4ac7195b7f66ae0e8bfc6)':
     dependencies:
       cron-parser: 4.9.0
       date.js: 0.3.3

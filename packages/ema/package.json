@@ -37,6 +37,7 @@
     "js-tiktoken": "^1.0.21",
     "js-yaml": "^4.1.0",
     "mongodb": "^7.0.0",
+    "mongodb-agenda": "npm:mongodb@4.17.2",
     "mongodb-memory-server": "^11.0.0",
     "openai": "^6.13.0",
     "pino": "^10.1.0",
