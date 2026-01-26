@@ -84,6 +84,18 @@ export class MemoryMongo extends Mongo {
   }
 
   /**
+   * Gets the MongoDB connection URI.
+   * @returns The MongoDB connection URI
+   * @throws Error if not connected
+   */
+  getUri(): string {
+    if (!this.mongoServer) {
+      throw new Error("MongoDB not connected. Call connect() first.");
+    }
+    return this.mongoServer.getUri(this.dbName);
+  }
+
+  /**
    * Closes the MongoDB connection and stops the in-memory server
    * @returns Promise resolving when connection is closed and server is stopped
    */
