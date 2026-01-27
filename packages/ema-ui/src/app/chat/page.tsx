@@ -61,7 +61,7 @@ export default function ChatPage() {
 
         if (isActive && Array.isArray(initialMessagesCache)) {
           setMessages(initialMessagesCache);
-          setNotice("History loaded from snapshot.");
+          setNotice("Conversation history loaded.");
         }
       } finally {
         if (isActive) {
