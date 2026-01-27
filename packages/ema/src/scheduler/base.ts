@@ -5,6 +5,7 @@
  */
 import type { JobDataMap } from "./jobs";
 import type { Job as AgendaJob } from "@hokify/agenda";
+import type { Filter } from "mongodb-agenda";
 
 /**
  * Union of all job names.
@@ -131,6 +132,18 @@ export interface Scheduler {
    * @returns Promise resolving to true if rescheduled, false otherwise.
    */
   rescheduleEvery(id: JobId, job: JobEverySpec): Promise<boolean>;
+  /**
+   * Gets a job by id.
+   * @param id - The job identifier.
+   * @returns Promise resolving to the job if found.
+   */
+  getJob(id: JobId): Promise<Job | null>;
+  /**
+   * Lists jobs using a MongoDB filter.
+   * @param filter - MongoDB filter for jobs.
+   * @returns Promise resolving to matching jobs.
+   */
+  listJobs(filter?: Filter<Record<string, unknown>>): Promise<Job[]>;
 }
 
 /**

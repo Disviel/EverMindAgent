@@ -230,6 +230,49 @@ describe("AgendaScheduler", () => {
     expect(doc?.data?.message).toBe("new");
   });
 
+  test("getJob returns null for missing job and returns job when present", async () => {
+    const handlers: JobHandlerMap = { test: async () => {} };
+    await scheduler.start(handlers);
+
+    const missing = await scheduler.getJob(new ObjectId().toString());
+    expect(missing).toBeNull();
+
+    const jobId = await scheduler.schedule({
+      name: "test",
+      runAt: Date.now() + 200,
+      data: { message: "lookup" },
+    });
+
+    const job = await scheduler.getJob(jobId);
+    expect(job).not.toBeNull();
+    expect(job?.attrs.name).toBe("test");
+    expect(job?.attrs.data?.message).toBe("lookup");
+  });
+
+  test("listJobs filters by name and data", async () => {
+    const handlers: JobHandlerMap = { test: async () => {} };
+    await scheduler.start(handlers);
+
+    await scheduler.schedule({
+      name: "test",
+      runAt: Date.now() + 500,
+      data: { message: "a" },
+    });
+    await scheduler.schedule({
+      name: "test",
+      runAt: Date.now() + 500,
+      data: { message: "b" },
+    });
+
+    const jobs = await scheduler.listJobs({
+      name: "test",
+      "data.message": "b",
+    });
+
+    expect(jobs.length).toBe(1);
+    expect(jobs[0]?.attrs.data?.message).toBe("b");
+  });
+
   test("recurring job runs expected times when runAt is in the future", async () => {
     const handlers: JobHandlerMap = { test: async () => {} };
     await scheduler.start(handlers);

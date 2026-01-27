@@ -73,6 +73,16 @@ export class AgendaScheduler implements Scheduler {
   }
 
   /**
+   * Gets a job by id.
+   * @param id - The job identifier.
+   * @returns Promise resolving to the job if found.
+   */
+  async getJob(id: JobId): Promise<Job | null> {
+    await this.ensureReady();
+    return this.loadJob(id);
+  }
+
+  /**
    * Schedules a job for execution.
    * @param job - The job to schedule.
    * @returns Promise resolving to the job id.
@@ -181,6 +191,17 @@ export class AgendaScheduler implements Scheduler {
     agendaJob.repeatEvery(job.interval, { skipImmediate: true });
     await agendaJob.save();
     return true;
+  }
+
+  /**
+   * Lists jobs using a MongoDB filter.
+   * @param filter - MongoDB filter for jobs.
+   * @returns Promise resolving to matching jobs.
+   */
+  async listJobs(filter?: Record<string, unknown>): Promise<Job[]> {
+    await this.ensureReady();
+    const jobs = await this.agenda.jobs(filter ?? {});
+    return jobs as Job[];
   }
 
   private async ensureReady(): Promise<void> {
