@@ -72,7 +72,7 @@ export interface JobEverySpec<K extends JobName = JobName> {
    */
   data: JobData<K>;
   /**
-   * Optional uniqueness criteria for deduplicating recurring jobs.
+   * Uniqueness criteria for deduplicating recurring jobs.
    */
   unique: Record<string, unknown>;
 }
