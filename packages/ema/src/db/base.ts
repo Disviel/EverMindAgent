@@ -171,6 +171,15 @@ export interface ActorEntity extends Entity {
    */
   roleId: number;
   /**
+   * Whether this actor should be loaded as a runtime and participate in
+   * schedules, channels, and message handling.
+   */
+  enabled: boolean;
+  /**
+   * Optional avatar URL used by UI clients.
+   */
+  avatarUrl?: string;
+  /**
    * Optional actor-specific LLM configuration. Falls back to global defaults
    * when omitted.
    */

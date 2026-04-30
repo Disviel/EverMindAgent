@@ -75,22 +75,33 @@ export class Actor {
     return this.dayDate;
   }
 
+  isBusy(): boolean {
+    return this.currentConversationId !== null || this.currentWorker !== null;
+  }
+
+  isPreparing(): boolean {
+    return this.status === "switching" || this.bootInitPromise !== null;
+  }
+
   canRunActiveTasks(): boolean {
     return this.status === "awake";
   }
 
-  startBootInit(): void {
+  startBootInit(): Promise<void> {
     if (this.bootInitPromise) {
-      return;
+      return this.bootInitPromise;
     }
     this.logger.info("Actor boot initialization started");
     const task = this.runBootInit().finally(() => {
       if (this.bootInitPromise === task) {
         this.bootInitPromise = null;
       }
+      this.publishRuntimeStatus("boot_init:complete");
     });
     this.bootInitPromise = task;
     this.runDetached(task, "run boot init");
+    this.publishRuntimeStatus("boot_init:start");
+    return task;
   }
 
   beginWake(): boolean {
@@ -100,6 +111,7 @@ export class Actor {
     this.stopSleepTimer();
     this.status = "switching";
     this.logger.info("Actor waking");
+    this.publishRuntimeStatus("wake:start");
     return true;
   }
 
@@ -107,12 +119,14 @@ export class Actor {
     this.dayDate = formatTimestamp("YYYY-MM-DD", Date.now());
     this.status = "awake";
     this.logger.info("Actor awake", { dayDate: this.dayDate });
+    this.publishRuntimeStatus("wake:complete");
     this.tryAcquireConversation();
   }
 
   failWake(): void {
     this.status = "sleep";
     this.logger.warn("Actor wake failed");
+    this.publishRuntimeStatus("wake:failed");
   }
 
   startSleepTimer(): boolean {
@@ -141,6 +155,7 @@ export class Actor {
     }
     this.status = "switching";
     this.logger.info("Actor sleeping");
+    this.publishRuntimeStatus("sleep:start");
     return true;
   }
 
@@ -149,11 +164,13 @@ export class Actor {
     this.dayDate = null;
     this.status = "sleep";
     this.logger.info("Actor asleep");
+    this.publishRuntimeStatus("sleep:complete");
   }
 
   failSleep(): void {
     this.status = "awake";
     this.logger.warn("Actor sleep failed");
+    this.publishRuntimeStatus("sleep:failed");
     this.tryAcquireConversation();
   }
 
@@ -321,6 +338,7 @@ export class Actor {
       conversationId,
       session: worker.session,
     });
+    this.publishRuntimeStatus("conversation:acquired");
     worker.events.on("actorResponsed", (event) => {
       this.runDetached(
         this.server.gateway.dispatchActorResponse(event.response),
@@ -423,11 +441,33 @@ export class Actor {
         ...(session ? { session } : {}),
       });
     }
+    this.publishRuntimeStatus("conversation:released");
   }
 
   private runDetached(task: Promise<unknown>, label: string): void {
     task.catch((error) => {
       this.logger.error(`Failed to ${label}:`, error);
     });
+  }
+
+  async dispose(): Promise<void> {
+    this.stopSleepTimer();
+    this.bootInitPromise = null;
+    this.sessionManager.clear();
+    this.releaseConversation();
+    this.status = "sleep";
+    this.dayDate = null;
+    this.logger.info("Actor runtime disposed");
+  }
+
+  private publishRuntimeStatus(reason: string): void {
+    this.server.controller.runtime.publishStatus(this.actorId, reason).catch(
+      (error) => {
+        this.logger.warn("Failed to publish runtime status", {
+          reason,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      },
+    );
   }
 }

@@ -59,6 +59,7 @@ export async function createTestActorFixture(dbService: DBService) {
   await dbService.actorDB.upsertActor({
     id: 1,
     roleId: 1,
+    enabled: true,
   });
   await dbService.userOwnActorDB.addActorToUser({
     userId: 1,

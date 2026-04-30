@@ -30,7 +30,7 @@ describe("buildTrainingCheckpointSnapshot", () => {
       name: "EMA",
       prompt: "role-book",
     });
-    await dbService.actorDB.upsertActor({ id: 1, roleId });
+    await dbService.actorDB.upsertActor({ id: 1, roleId, enabled: true });
 
     const memoryManager = new MemoryManager({ dbService } as Server);
     await memoryManager.appendShortTermMemory(1, {

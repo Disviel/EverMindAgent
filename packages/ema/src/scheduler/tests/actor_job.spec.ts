@@ -91,6 +91,9 @@ type FakeServer = {
   };
   dbService: {
     getActorLLMConfig: (actorId: number) => Promise<Record<string, unknown>>;
+    actorDB: {
+      getActor: (actorId: number) => Promise<{ enabled: boolean } | null>;
+    };
   };
   memoryManager: FakeMemoryManager;
 };
@@ -130,6 +133,11 @@ function createFakeServer(
     dbService: {
       async getActorLLMConfig() {
         return {};
+      },
+      actorDB: {
+        async getActor() {
+          return { enabled: true };
+        },
       },
     },
     memoryManager: {
@@ -405,6 +413,24 @@ describe("actor background job lifecycle logs", () => {
       pendingAfter: 19,
       threshold: 20,
       followUpScheduled: false,
+    });
+  });
+
+  test("background jobs are skipped when the actor is disabled", async () => {
+    const server = createFakeServer(createBufferedMessages(1, 20, 1000));
+    server.dbService.actorDB.getActor = vi.fn(async () => ({
+      enabled: false,
+    }));
+    const runWithStateSpy = vi.spyOn(Agent.prototype, "runWithState");
+
+    await runActorBackgroundJob(server as any, conversationRollupJob(), 2000);
+
+    expect(runWithStateSpy).not.toHaveBeenCalled();
+    expectInfoLog(server, "Actor background task skipped", {
+      actorId: 1,
+      task: "conversation_rollup",
+      conversationId: 1,
+      reason: "actor_disabled_or_missing",
     });
   });
 

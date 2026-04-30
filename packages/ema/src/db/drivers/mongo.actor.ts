@@ -31,7 +31,9 @@ export class MongoActorDB implements ActorDB {
     const db = this.mongo.getDb();
     const collection = db.collection<ActorEntity>(this.$cn);
 
-    return (await collection.find().toArray()).map(omitMongoId);
+    return (await collection.find().toArray())
+      .map(omitMongoId)
+      .map(normalizeActorEntity);
   }
 
   /**
@@ -49,7 +51,7 @@ export class MongoActorDB implements ActorDB {
       return null;
     }
 
-    return omitMongoId(actor);
+    return normalizeActorEntity(omitMongoId(actor));
   }
 
   /**
@@ -59,7 +61,7 @@ export class MongoActorDB implements ActorDB {
    */
   async upsertActor(entity: ActorEntity): Promise<number> {
     entity.updatedAt = Date.now();
-    return upsertEntity(this.mongo, this.$cn, entity);
+    return upsertEntity(this.mongo, this.$cn, normalizeActorEntity(entity));
   }
 
   /**
@@ -80,4 +82,11 @@ export class MongoActorDB implements ActorDB {
     const collection = db.collection<ActorEntity>(this.$cn);
     await collection.createIndex({ id: 1 }, { unique: true });
   }
+}
+
+function normalizeActorEntity(entity: ActorEntity): ActorEntity {
+  return {
+    ...entity,
+    enabled: entity.enabled ?? true,
+  };
 }

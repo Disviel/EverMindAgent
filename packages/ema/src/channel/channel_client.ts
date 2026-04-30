@@ -42,6 +42,9 @@ export class WebsocketChannelClient implements Channel, ChannelClient {
   private loopVersion = 0;
   private requestSeq = 0;
   private readonly pendingRequests = new Map<string, PendingRequest>();
+  private readonly statusListeners = new Set<
+    (status: ChannelClientStatus) => void
+  >();
 
   private constructor(
     channel: string,
@@ -96,6 +99,13 @@ export class WebsocketChannelClient implements Channel, ChannelClient {
     return this.status;
   }
 
+  onStatusChange(listener: (status: ChannelClientStatus) => void): () => void {
+    this.statusListeners.add(listener);
+    return () => {
+      this.statusListeners.delete(listener);
+    };
+  }
+
   isEnabled(): boolean {
     return this.enabled;
   }
@@ -132,7 +142,7 @@ export class WebsocketChannelClient implements Channel, ChannelClient {
 
   async close(): Promise<void> {
     this.loopVersion += 1;
-    this.status = "exhausted";
+    this.setStatus("exhausted");
     if (this.retryTimer) {
       clearTimeout(this.retryTimer);
       this.retryTimer = null;
@@ -251,7 +261,7 @@ export class WebsocketChannelClient implements Channel, ChannelClient {
         if (!this.enabled || this.loopVersion !== loopVersion) {
           return;
         }
-        this.status = "connecting";
+        this.setStatus("connecting");
 
         try {
           const socket = await this.connectOnce(loopVersion, connectTimeoutMs);
@@ -259,7 +269,7 @@ export class WebsocketChannelClient implements Channel, ChannelClient {
             return;
           }
           connected = true;
-          this.status = "connected";
+          this.setStatus("connected");
           this.logger.info(`Connected ${this.name} to ${this.url}.`);
           await this.waitForSocketClose(socket, loopVersion);
           break;
@@ -273,7 +283,7 @@ export class WebsocketChannelClient implements Channel, ChannelClient {
         return;
       }
 
-      this.status = "connecting";
+      this.setStatus("connecting");
       await this.sleep(retryDelayMs, loopVersion);
     }
   }
@@ -406,7 +416,7 @@ export class WebsocketChannelClient implements Channel, ChannelClient {
     });
 
     if (!this.enabled || this.loopVersion !== loopVersion) {
-      this.status = "exhausted";
+      this.setStatus("exhausted");
     }
   }
 
@@ -590,5 +600,15 @@ export class WebsocketChannelClient implements Channel, ChannelClient {
         Authorization: `Bearer ${this.accessToken}`,
       },
     };
+  }
+
+  private setStatus(status: ChannelClientStatus): void {
+    if (this.status === status) {
+      return;
+    }
+    this.status = status;
+    for (const listener of this.statusListeners) {
+      listener(status);
+    }
   }
 }

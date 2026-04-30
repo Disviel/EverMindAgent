@@ -20,6 +20,14 @@ export class ActorRegistry {
   }
 
   /**
+   * Returns whether one actor runtime is loaded in memory.
+   * @param actorId - The actor identifier.
+   */
+  has(actorId: number): boolean {
+    return this.actors.has(actorId);
+  }
+
+  /**
    * Ensures one actor runtime exists and returns it.
    * @param actorId - The actor identifier.
    * @returns Loaded runtime actor instance.
@@ -34,6 +42,9 @@ export class ActorRegistry {
             await this.server.dbService.actorDB.getActor(actorId);
           if (!actorEntity) {
             throw new Error(`Actor ${actorId} not found.`);
+          }
+          if (!actorEntity.enabled) {
+            throw new Error(`Actor ${actorId} is disabled.`);
           }
           const created = await Actor.create(actorId, this.server);
           this.actors.set(actorId, created);
@@ -65,10 +76,28 @@ export class ActorRegistry {
     const actors = await this.server.dbService.actorDB.listActors();
     await Promise.all(
       actors
+        .filter((actor) => actor.enabled)
         .map((actor) => actor.id)
         .filter((id): id is number => typeof id === "number")
         .map((actorId) => this.ensure(actorId)),
     );
+  }
+
+  /**
+   * Unloads one actor runtime from memory.
+   * @param actorId - The actor identifier.
+   */
+  async unload(actorId: number): Promise<void> {
+    const inFlight = this.actorInFlight.get(actorId);
+    if (inFlight) {
+      await inFlight.catch(() => undefined);
+    }
+    const actor = this.actors.get(actorId);
+    if (!actor) {
+      return;
+    }
+    this.actors.delete(actorId);
+    await actor.dispose();
   }
 
   /**

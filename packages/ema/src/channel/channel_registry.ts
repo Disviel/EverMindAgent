@@ -85,6 +85,54 @@ export class ChannelRegistry {
     }
   }
 
+  async stopActorChannels(actorId: number): Promise<void> {
+    const actorChannels = this.channels.get(actorId);
+    if (!actorChannels) {
+      return;
+    }
+    await Promise.all(
+      Array.from(actorChannels.values()).map(async (channel) => {
+        if (channel instanceof WebsocketChannelClient) {
+          await channel.close();
+        }
+      }),
+    );
+    this.channels.delete(actorId);
+  }
+
+  async refreshActorChannels(actorId: number): Promise<void> {
+    await this.stopActorChannels(actorId);
+    await this.ensureStarted(actorId);
+  }
+
+  getActorChannelStatus(
+    actorId: number,
+    channelName: string,
+  ): "connecting" | "connected" | "failed" {
+    const channel = this.getChannel(actorId, channelName);
+    if (!(channel instanceof WebsocketChannelClient)) {
+      return "failed";
+    }
+    const status = channel.getStatus();
+    if (status === "connected") {
+      return "connected";
+    }
+    if (status === "connecting") {
+      return "connecting";
+    }
+    return "failed";
+  }
+
+  async restartActorChannel(actorId: number, channelName: string): Promise<void> {
+    const channel = this.getChannel(actorId, channelName);
+    if (channel instanceof WebsocketChannelClient) {
+      await channel.close();
+    }
+    const actorChannels = this.channels.get(actorId);
+    actorChannels?.delete(channelName);
+    await this.ensureStarted(actorId);
+  }
+
   /**
    * Ensures runtime channels for one actor are created and started.
    * @param actorId - Actor identifier.
@@ -135,7 +183,7 @@ export class ChannelRegistry {
           `QQ channel config for actor ${actorId} is incomplete.`,
         );
       }
-      return await WebsocketChannelClient.create(
+      const channel = await WebsocketChannelClient.create(
         channelName,
         actorId,
         config.qq.wsUrl,
@@ -143,6 +191,17 @@ export class ChannelRegistry {
         adapterFactory,
         config.qq.accessToken,
       );
+      channel.onStatusChange(() => {
+        this.server.controller.channel
+          .publishQqStatus(actorId)
+          .catch((error) => {
+            this.server.logger.warn("Failed to publish QQ channel status", {
+              actorId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+      });
+      return channel;
     }
 
     return null;

@@ -41,6 +41,10 @@ export class SessionManager {
     return selectedConversationId;
   }
 
+  clear(): void {
+    this.queues.clear();
+  }
+
   private getOrCreateQueue(conversationId: number): SessionQueue<ActorInput> {
     let queue = this.queues.get(conversationId);
     if (!queue) {

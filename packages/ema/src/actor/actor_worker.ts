@@ -121,6 +121,10 @@ export class ActorWorker {
             time: Date.now(),
           };
           await this.server.memoryManager.persistChatMessage(response);
+          await this.server.controller.chat.publishConversationMessage(
+            this.conversationId,
+            msgId,
+          );
           await this.server.memoryManager.addToBuffer(
             this.conversationId,
             msgId,

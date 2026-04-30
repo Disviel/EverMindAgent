@@ -26,19 +26,36 @@ describe("MongoActorDB with in-memory MongoDB", () => {
   test("should create an actor", async () => {
     const actorData: ActorEntity = {
       roleId: 1,
+      enabled: true,
+      avatarUrl: "/avatars/1.png",
     };
 
     await db.upsertActor(actorData);
     const retrievedActor = await db.getActor(1);
     expect(retrievedActor).toEqual(
-      expect.objectContaining({ roleId: actorData.roleId }),
+      expect.objectContaining({
+        roleId: actorData.roleId,
+        enabled: true,
+        avatarUrl: "/avatars/1.png",
+      }),
     );
     expect(typeof retrievedActor?.updatedAt).toBe("number");
+  });
+
+  test("should normalize legacy actors as enabled", async () => {
+    const collection = mongo.getDb().collection("actors");
+    await collection.insertOne({ id: 1, roleId: 1 });
+
+    const retrievedActor = await db.getActor(1);
+    expect(retrievedActor).toEqual(
+      expect.objectContaining({ id: 1, roleId: 1, enabled: true }),
+    );
   });
 
   test("should update an existing actor", async () => {
     const actorData: ActorEntity = {
       roleId: 1,
+      enabled: true,
     };
 
     const id = await db.upsertActor(actorData);
@@ -47,6 +64,7 @@ describe("MongoActorDB with in-memory MongoDB", () => {
     const updatedActor: ActorEntity = {
       id,
       roleId: 2,
+      enabled: true,
     };
 
     await db.upsertActor(updatedActor);
@@ -60,6 +78,7 @@ describe("MongoActorDB with in-memory MongoDB", () => {
   test("should delete an actor", async () => {
     const actorData: ActorEntity = {
       roleId: 1,
+      enabled: true,
     };
 
     await db.upsertActor(actorData);
@@ -78,6 +97,7 @@ describe("MongoActorDB with in-memory MongoDB", () => {
   test("should return false when deleting already deleted actor", async () => {
     const actorData: ActorEntity = {
       roleId: 1,
+      enabled: true,
     };
 
     await db.upsertActor(actorData);
@@ -92,12 +112,15 @@ describe("MongoActorDB with in-memory MongoDB", () => {
   test("should not list deleted actors", async () => {
     const actor1: ActorEntity = {
       roleId: 1,
+      enabled: true,
     };
     const actor2: ActorEntity = {
       roleId: 1,
+      enabled: true,
     };
     const actor3: ActorEntity = {
       roleId: 2,
+      enabled: true,
     };
 
     await db.upsertActor(actor1);
@@ -126,12 +149,15 @@ describe("MongoActorDB with in-memory MongoDB", () => {
   test("should list multiple actors", async () => {
     const actor1: ActorEntity = {
       roleId: 1,
+      enabled: true,
     };
     const actor2: ActorEntity = {
       roleId: 1,
+      enabled: true,
     };
     const actor3: ActorEntity = {
       roleId: 2,
+      enabled: true,
     };
 
     await db.upsertActor(actor1);
@@ -153,6 +179,7 @@ describe("MongoActorDB with in-memory MongoDB", () => {
     // Create
     const actorData: ActorEntity = {
       roleId: 1,
+      enabled: true,
     };
     await db.upsertActor(actorData);
 
@@ -167,6 +194,7 @@ describe("MongoActorDB with in-memory MongoDB", () => {
     const updatedActor: ActorEntity = {
       id: 1,
       roleId: 2,
+      enabled: true,
     };
     await db.upsertActor(updatedActor);
     actor = await db.getActor(1);

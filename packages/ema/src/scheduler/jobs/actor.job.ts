@@ -122,6 +122,16 @@ export async function runActorForegroundJob(
     conversationId: job.conversationId,
     triggeredAt,
   });
+  if (!(await canRunScheduledActorJob(server, job.actorId))) {
+    server.logger?.info("Actor foreground task skipped", {
+      actorId: job.actorId,
+      task: job.task,
+      conversationId: job.conversationId,
+      triggeredAt,
+      reason: "actor_disabled_or_missing",
+    });
+    return;
+  }
   switch (job.task) {
     case "chat":
       await runChatTask(server, {
@@ -157,6 +167,10 @@ export async function runActorBackgroundJob(
   });
   const dispatchStartedAt = performance.now();
   logBackgroundTaskRequested(server, logData);
+  if (!(await canRunScheduledActorJob(server, job.actorId))) {
+    logBackgroundTaskSkipped(server, logData, "actor_disabled_or_missing");
+    return;
+  }
   try {
     switch (job.task) {
       case "activity":
@@ -214,6 +228,14 @@ export async function runActorBackgroundJob(
     }
     throw error;
   }
+}
+
+async function canRunScheduledActorJob(
+  server: Server,
+  actorId: number,
+): Promise<boolean> {
+  const actor = await server.dbService.actorDB.getActor(actorId);
+  return actor?.enabled === true;
 }
 
 /**

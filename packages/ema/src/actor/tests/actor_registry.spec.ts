@@ -11,6 +11,8 @@ import {
 } from "../../config/tests/helpers";
 import { createMongo, DBService, type Mongo } from "../../db";
 import { Server } from "../../server";
+import { EmaBus } from "../../bus";
+import { EmaController } from "../../controller";
 
 const createServerForTest = async (
   fs: MemFs,
@@ -21,6 +23,8 @@ const createServerForTest = async (
   const server = new (Server as any)() as Server;
   (server as any).fs = fs;
   server.dbService = DBService.createSync(fs, mongo, lance);
+  server.bus = new EmaBus();
+  server.controller = new EmaController(server);
   server.actorRegistry = new ActorRegistry(server);
   server.gateway = new Gateway(server);
   server.memoryManager = new MemoryManager(server);
@@ -57,6 +61,39 @@ describe("ActorRegistry", () => {
         );
       expect(conversation?.description).toBe(
         "这是你和你的拥有者之间在网页端私聊的对话。",
+      );
+    } finally {
+      await mongo.close();
+      await lance.close();
+    }
+  });
+
+  test("restoreAll skips disabled actors and ensure rejects them", async () => {
+    const fs = new MemFs();
+    const mongo = await createMongo("", "test_actor_registry_disabled", "memory");
+    await mongo.connect();
+    const lance = await lancedb.connect("memory://ema-actor-registry-disabled");
+    const server = await createServerForTest(fs, mongo, lance);
+
+    try {
+      await createTestActorFixture(server.dbService);
+      await server.dbService.roleDB.upsertRole({
+        id: 2,
+        name: "Disabled",
+        prompt: "disabled role",
+      });
+      await server.dbService.actorDB.upsertActor({
+        id: 2,
+        roleId: 2,
+        enabled: false,
+      });
+
+      await server.actorRegistry.restoreAll();
+
+      expect(server.actorRegistry.has(1)).toBe(true);
+      expect(server.actorRegistry.has(2)).toBe(false);
+      await expect(server.actorRegistry.ensure(2)).rejects.toThrow(
+        "Actor 2 is disabled.",
       );
     } finally {
       await mongo.close();

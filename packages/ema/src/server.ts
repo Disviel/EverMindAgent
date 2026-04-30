@@ -8,6 +8,8 @@ import { createJobHandlers } from "./scheduler/jobs";
 import { MemoryManager } from "./memory/manager";
 import { Gateway } from "./gateway";
 import { Logger } from "./shared/logger";
+import { EmaBus } from "./bus";
+import { EmaController } from "./controller";
 
 export interface ServerCreateOptions {
   readonly bootstrap?: BootstrapConfig;
@@ -54,6 +56,16 @@ export class Server {
    */
   logger!: Logger;
 
+  /**
+   * Process-wide business event bus for dashboard/sidebar/settings updates.
+   */
+  bus!: EmaBus;
+
+  /**
+   * Business controller entrypoint used by UI adapters and other consumers.
+   */
+  controller!: EmaController;
+
   private runtimeStarted = false;
 
   /**
@@ -92,6 +104,8 @@ export class Server {
       ],
     });
     server.logger.info("Server starting");
+    server.bus = new EmaBus();
+    server.controller = new EmaController(server);
 
     await server.initializeStorage();
     await server.restoreDevelopmentDataIfNeeded();
