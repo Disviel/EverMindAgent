@@ -42,7 +42,6 @@ import type {
   DashboardOverviewResponse,
 } from "@/types/dashboard/v1beta1";
 
-type ThemeMode = "dark" | "light";
 type LayoutResizeTarget = "sidebar" | "actorInfo";
 
 interface DashboardLayoutState {
@@ -89,17 +88,6 @@ function shouldKeepTextSelection(target: EventTarget | null) {
         ),
       )
     : false;
-}
-
-function getStoredTheme(): ThemeMode {
-  if (typeof window === "undefined") {
-    return "dark";
-  }
-
-  const stored = window.localStorage.getItem(
-    "ema-webui-theme",
-  ) as ThemeMode | null;
-  return stored === "dark" || stored === "light" ? stored : "dark";
 }
 
 function resetDashboardLayoutStorageIfNeeded() {
@@ -206,7 +194,6 @@ function DashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const dashboardShellRef = useRef<HTMLElement>(null);
-  const [themeMode] = useState<ThemeMode>(getStoredTheme);
   const [overview, setOverview] =
     useState<DashboardOverviewResponse>(fallbackOverview);
   const [overviewLoaded, setOverviewLoaded] = useState(false);
@@ -346,11 +333,6 @@ function DashboardContent() {
     },
     [],
   );
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = themeMode;
-    window.localStorage.setItem("ema-webui-theme", themeMode);
-  }, [themeMode]);
 
   useEffect(() => {
     const storedLayout = getStoredDashboardLayout();

@@ -39,6 +39,7 @@ export function toWebLlmConfig(config: LLMConfig): ActorLlmConfig {
       useVertexAi: config.google.useVertexAi,
       project: config.google.project,
       location: config.google.location,
+      credentialsFile: config.google.credentialsFile,
     },
   };
 }

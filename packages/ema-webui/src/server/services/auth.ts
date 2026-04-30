@@ -1,17 +1,19 @@
 import "server-only";
 
-import { getOwnerUser } from "@/server/store/users";
+import { ensureEmaServer } from "@/server/ema-server";
 import type { OwnerStatusResponse } from "@/types/auth/v1beta1";
 
 export async function getOwnerStatus(): Promise<OwnerStatusResponse> {
-  const user = await getOwnerUser();
+  const server = await ensureEmaServer();
+  const status = await server.controller.setup.getStatus();
+  const user = status.owner;
   return {
     apiVersion: "v1beta1",
-    ownerReady: Boolean(user),
+    ownerReady: status.complete,
     ...(user
       ? {
           user: {
-            id: user.id,
+            id: String(user.id),
             name: user.name,
           },
         }

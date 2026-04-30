@@ -107,6 +107,7 @@ describe("GenAI", () => {
         useVertexAi: false,
         project: "test-project",
         location: "global",
+        credentialsFile: "",
       },
       new RetryConfig(false),
     );

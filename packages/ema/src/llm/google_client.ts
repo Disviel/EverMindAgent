@@ -28,6 +28,7 @@ import {
   ThinkingLevel,
 } from "@google/genai";
 import type {
+  GenerateContentConfig,
   GoogleGenAIOptions,
   Part as GenAIContent,
   FunctionDeclaration,
@@ -40,17 +41,34 @@ export interface GenAIMessage {
 
 export const GOOGLE_AI_API_VERSION = "v1beta";
 export const VERTEX_AI_API_VERSION = "v1";
+export const GOOGLE_VERTEX_AI_SCOPE =
+  "https://www.googleapis.com/auth/cloud-platform";
 
-/** Appends the API version when a custom Google base URL omits it. */
-export function withGoogleApiVersion(
-  baseUrl: string,
-  apiVersion: string,
-): string {
-  const normalized = baseUrl.replace(/\/+$/, "");
-  if (/\/v\d+(beta|alpha)?$/i.test(normalized)) {
-    return normalized;
-  }
-  return `${normalized}/${apiVersion}`;
+export interface GoogleVertexAIConfig {
+  project: string;
+  location: string;
+  credentialsFile: string;
+}
+
+/** Builds Vertex AI options from database-backed Google config. */
+export function buildGoogleVertexAIOptions(
+  config: GoogleVertexAIConfig,
+): GoogleGenAIOptions {
+  const credentialsFile = config.credentialsFile.trim();
+  return {
+    apiVersion: VERTEX_AI_API_VERSION,
+    vertexai: true,
+    project: config.project,
+    location: config.location,
+    googleAuthOptions: credentialsFile
+      ? {
+          keyFile: credentialsFile,
+          scopes: [GOOGLE_VERTEX_AI_SCOPE],
+        }
+      : {
+          scopes: [GOOGLE_VERTEX_AI_SCOPE],
+        },
+  };
 }
 
 /**
@@ -123,12 +141,6 @@ export class GoogleClient extends LLMClientBase implements SchemaAdapter {
     readonly retryConfig: RetryConfig,
   ) {
     super();
-    const vertexAIOptions: GoogleGenAIOptions = {
-      apiVersion: VERTEX_AI_API_VERSION,
-      vertexai: true,
-      project: config.project,
-      location: config.location,
-    };
     const googleAIOptions: GoogleGenAIOptions = {
       apiVersion: GOOGLE_AI_API_VERSION,
       vertexai: false,
@@ -136,11 +148,11 @@ export class GoogleClient extends LLMClientBase implements SchemaAdapter {
     };
     if (config.baseUrl && config.baseUrl !== DEFAULT_GOOGLE_BASE_URL) {
       googleAIOptions.httpOptions = {
-        baseUrl: withGoogleApiVersion(config.baseUrl, GOOGLE_AI_API_VERSION),
+        baseUrl: config.baseUrl,
       };
     }
     const options: GoogleGenAIOptions = config.useVertexAi
-      ? vertexAIOptions
+      ? buildGoogleVertexAIOptions(config)
       : googleAIOptions;
     this.client = new GenAI(
       options,
@@ -332,18 +344,21 @@ export class GoogleClient extends LLMClientBase implements SchemaAdapter {
     systemPrompt?: string,
     signal?: AbortSignal,
   ): Promise<GenAIResponse> {
+    const config: GenerateContentConfig = {
+      candidateCount: 1,
+      systemInstruction: systemPrompt,
+      abortSignal: signal,
+      thinkingConfig: {
+        thinkingLevel: this.thinkingLevelMap.get(this.config.model),
+      },
+    };
+    if (apiTools?.length) {
+      config.tools = [{ functionDeclarations: apiTools }];
+    }
     return this.client.models.generateContent({
       model: this.config.model,
       contents: apiMessages,
-      config: {
-        candidateCount: 1,
-        systemInstruction: systemPrompt,
-        tools: [{ functionDeclarations: apiTools }],
-        abortSignal: signal,
-        thinkingConfig: {
-          thinkingLevel: this.thinkingLevelMap.get(this.config.model),
-        },
-      },
+      config,
     });
   }
 

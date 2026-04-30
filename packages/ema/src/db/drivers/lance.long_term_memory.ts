@@ -1,4 +1,3 @@
-import { GoogleGenAI } from "@google/genai";
 import type {
   SearchLongTermMemoriesRequest,
   LongTermMemoryEntity,
@@ -15,19 +14,8 @@ import {
   Utf8,
 } from "apache-arrow";
 
-import { FetchWithProxy } from "../../llm/proxy";
-import {
-  GenAI,
-  GOOGLE_AI_API_VERSION,
-  VERTEX_AI_API_VERSION,
-  withGoogleApiVersion,
-} from "../../llm/google_client";
-import { type GoogleGenAIOptions } from "@google/genai";
-import {
-  DEFAULT_GOOGLE_BASE_URL,
-  GlobalConfig,
-  type EmbeddingConfig,
-} from "../../config/index";
+import { GlobalConfig } from "../../config/index";
+import { EmbeddingClient } from "../../memory/embedding_client";
 import { Logger } from "../../shared/logger";
 
 /**
@@ -188,83 +176,8 @@ export class LanceMemoryVectorSearcher extends MongoMemorySearchAdaptor {
   }
 
   private getEmbeddingEngine(): LongTermMemoryEmbeddingEngine {
-    this.embeddingEngine ??= new LongTermMemoryGeminiEmbeddingEngine(
-      GlobalConfig.defaultEmbedding,
-    );
+    this.embeddingEngine ??= new EmbeddingClient(GlobalConfig.defaultEmbedding);
     return this.embeddingEngine;
-  }
-}
-
-/**
- * Implementation of the long term memory embedding engine using Gemini
- */
-class LongTermMemoryGeminiEmbeddingEngine implements LongTermMemoryEmbeddingEngine {
-  private readonly ai: GoogleGenAI;
-  private readonly model: string;
-
-  constructor(config: EmbeddingConfig) {
-    if (config.provider !== "google") {
-      throw new Error("Only Google embedding is supported.");
-    }
-    if (!config.google.useVertexAi && !config.google.apiKey) {
-      throw new Error("Google embedding API key is required.");
-    }
-
-    this.model = config.google.model;
-    const vertexAIOptions = {
-      apiVersion: VERTEX_AI_API_VERSION,
-      vertexai: true,
-      project: config.google.project,
-      location: config.google.location,
-    };
-    const googleAIOptions: GoogleGenAIOptions = {
-      apiVersion: GOOGLE_AI_API_VERSION,
-      vertexai: false,
-      apiKey: config.google.apiKey,
-    };
-    if (
-      config.google.baseUrl &&
-      config.google.baseUrl !== DEFAULT_GOOGLE_BASE_URL
-    ) {
-      googleAIOptions.httpOptions = {
-        baseUrl: withGoogleApiVersion(
-          config.google.baseUrl,
-          GOOGLE_AI_API_VERSION,
-        ),
-      };
-    }
-    const options: GoogleGenAIOptions = config.google.useVertexAi
-      ? vertexAIOptions
-      : googleAIOptions;
-    this.ai = new GenAI(
-      options,
-      new FetchWithProxy(GlobalConfig.system.httpsProxy).createFetcher(),
-    );
-  }
-  /**
-   * Creates a vector embedding for a long term memory
-   * @param dim - The dimension of the vector embedding
-   * @param entity - The long term memory to create an embedding for
-   * @returns Promise resolving to the vector embedding of the long term memory
-   */
-  async createEmbedding(
-    dim: number,
-    input: LongTermMemoryEmbeddingInput,
-  ): Promise<number[] | undefined> {
-    const embeddingContent = input.trim();
-    if (!embeddingContent) {
-      return undefined;
-    }
-    const response = await this.ai.models.embedContent({
-      model: this.model,
-      contents: [embeddingContent],
-      config: {
-        // todo: find the best task type.
-        taskType: "RETRIEVAL_QUERY",
-        outputDimensionality: dim,
-      },
-    });
-    return response.embeddings?.[0]?.values;
   }
 }
 

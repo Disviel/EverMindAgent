@@ -1,6 +1,19 @@
-import { GlobalConfig, type LLMConfig, type WebSearchConfig } from "../config";
+import {
+  GlobalConfig,
+  type EmbeddingConfig,
+  type LLMConfig,
+  type WebSearchConfig,
+} from "../config";
+import { LLMClient } from "../llm";
+import { RetryConfig } from "../llm/retry";
+import { EmbeddingClient } from "../memory/embedding_client";
+import { isTextItem } from "../shared/schema";
 import type { Server } from "../server";
-import type { EffectiveActorSettings, LlmProbeResult } from "./types";
+import type {
+  EffectiveActorSettings,
+  EmbeddingProbeResult,
+  LlmProbeResult,
+} from "./types";
 
 export class SettingsController {
   constructor(private readonly server: Server) {}
@@ -21,19 +34,93 @@ export class SettingsController {
         message: "OpenAI Chat Completions mode is not supported yet.",
       };
     }
-    const selected = config.provider === "openai" ? config.openai : config.google;
-    if (!selected.model.trim() || !selected.baseUrl.trim() || !selected.apiKey.trim()) {
+    const incompleteMessage = validateLlmProbeConfig(config);
+    if (incompleteMessage) {
       return {
         ok: false,
         unsupported: false,
-        message: "LLM config is incomplete.",
+        message: incompleteMessage,
       };
     }
-    return {
-      ok: true,
-      unsupported: false,
-      message: "ok",
-    };
+    const startedAt = Date.now();
+    try {
+      const client = new LLMClient(config, new RetryConfig(false));
+      const response = await client.generate(
+        [
+          {
+            role: "user",
+            contents: [{ type: "text", text: "Reply with OK." }],
+          },
+        ],
+        undefined,
+        "You are a connection probe. Reply with OK only.",
+      );
+      const text = response.message.contents
+        .filter(isTextItem)
+        .map((item) => item.text.trim())
+        .join("");
+      if (!text) {
+        return {
+          ok: false,
+          unsupported: false,
+          message: "LLM provider returned an empty response.",
+        };
+      }
+      return {
+        ok: true,
+        unsupported: false,
+        message: "ok",
+        diagnostics: {
+          latencyMs: Date.now() - startedAt,
+          totalTokens: response.totalTokens,
+          finishReason: response.finishReason,
+        },
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        unsupported: false,
+        message: errorMessage(error),
+        diagnostics: {
+          latencyMs: Date.now() - startedAt,
+        },
+      };
+    }
+  }
+
+  async probeEmbeddingConfig(
+    config: EmbeddingConfig,
+  ): Promise<EmbeddingProbeResult> {
+    const incompleteMessage = validateEmbeddingProbeConfig(config);
+    if (incompleteMessage) {
+      return {
+        ok: false,
+        unsupported: false,
+        message: incompleteMessage,
+      };
+    }
+    const startedAt = Date.now();
+    try {
+      const result = await new EmbeddingClient(config).probe();
+      return {
+        ok: true,
+        unsupported: false,
+        message: "ok",
+        diagnostics: {
+          latencyMs: Date.now() - startedAt,
+          vectorDimensions: result.dimensions,
+        },
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        unsupported: false,
+        message: errorMessage(error),
+        diagnostics: {
+          latencyMs: Date.now() - startedAt,
+        },
+      };
+    }
   }
 
   async saveLlmConfig(actorId: number, config: LLMConfig): Promise<LLMConfig> {
@@ -83,4 +170,55 @@ export class SettingsController {
     }
     return actor as typeof actor & { id: number };
   }
+}
+
+function validateLlmProbeConfig(config: LLMConfig): string | null {
+  if (config.provider === "openai") {
+    return !config.openai.model.trim() ||
+      !config.openai.baseUrl.trim() ||
+      !config.openai.apiKey.trim()
+      ? "LLM config is incomplete."
+      : null;
+  }
+  if (!config.google.model.trim()) {
+    return "LLM config is incomplete.";
+  }
+  if (config.google.useVertexAi) {
+    return !config.google.project.trim() ||
+      !config.google.location.trim()
+      ? "Google Vertex AI project and location are required."
+      : null;
+  }
+  return !config.google.baseUrl.trim() || !config.google.apiKey.trim()
+    ? "LLM config is incomplete."
+    : null;
+}
+
+function validateEmbeddingProbeConfig(config: EmbeddingConfig): string | null {
+  if (config.provider === "openai") {
+    return !config.openai.model.trim() ||
+      !config.openai.baseUrl.trim() ||
+      !config.openai.apiKey.trim()
+      ? "Embedding config is incomplete."
+      : null;
+  }
+  if (!config.google.model.trim()) {
+    return "Embedding config is incomplete.";
+  }
+  if (config.google.useVertexAi) {
+    return !config.google.project.trim() ||
+      !config.google.location.trim()
+      ? "Google Vertex AI project and location are required."
+      : null;
+  }
+  return !config.google.baseUrl.trim() || !config.google.apiKey.trim()
+    ? "Embedding config is incomplete."
+    : null;
+}
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
 }

@@ -247,10 +247,6 @@ export interface UserEntity extends Entity {
    */
   avatar: string;
   /**
-   * The email of the user
-   */
-  email: string;
-  /**
    * Optional Tavily API key owned by the user.
    */
   tavilyApiKey?: string;

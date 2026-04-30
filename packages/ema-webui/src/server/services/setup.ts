@@ -1,10 +1,16 @@
 import "server-only";
 
 import {
+  DEFAULT_CHANNEL_CONFIG,
+  DEFAULT_WEB_SEARCH_CONFIG,
+  type EmbeddingConfig,
+  type GlobalConfigRecord,
+  type LLMConfig,
+} from "ema";
+import {
   isEmbeddingConfigComplete,
   isLLMConfigComplete,
   isLLMConfigSupported,
-  isMongoConfigComplete,
   initialDraft,
   setupSteps,
   validateSetupDraft,
@@ -20,19 +26,10 @@ import {
   type SetupStatusResponse,
   type SetupValidationIssue,
 } from "@/types/setup/v1beta1";
-import { commitOwnerSetup, getOwnerUser } from "@/server/store/users";
+import { ensureEmaServer } from "@/server/ema-server";
 import { randomUUID } from "node:crypto";
 
 const API_VERSION = "v1beta1" as const;
-const PROBE_PASS_RATE = 0.68;
-
-const sleep = (duration: number) =>
-  new Promise((resolve) => setTimeout(resolve, duration));
-
-const randomInt = (min: number, max: number) =>
-  Math.floor(Math.random() * (max - min + 1)) + min;
-
-const shouldPassProbe = () => Math.random() < PROBE_PASS_RATE;
 
 function now() {
   return new Date().toISOString();
@@ -137,7 +134,6 @@ function validationIssuesForCheck(
     ...initialDraft,
     owner: {
       name: "Owner",
-      email: "",
       qq: "10000",
     },
     [target]: config,
@@ -148,69 +144,6 @@ function validationIssuesForCheck(
   );
 }
 
-function buildMongoErrorDetails(config: SetupDraft["mongo"]): {
-  code: SetupCheckErrorCode;
-  details: SetupDiagnostics;
-} {
-  if (config.kind === "memory") {
-    return {
-      code: "MONGO_MEMORY_START_FAILED",
-      details: {
-        adapter: "mongodb-memory-server",
-        driverErrorName: "MongoMemoryServerStartError",
-        driverErrorMessage: "binary download timed out after 30000ms",
-        timeoutMs: 30000,
-      },
-    };
-  }
-
-  return {
-    code: "MONGO_HANDSHAKE_FAILED",
-    details: {
-      driverErrorName: "MongoServerSelectionError",
-      driverErrorMessage: "connect ECONNREFUSED 127.0.0.1:27017",
-      serverSelectionTimeoutMs: 30000,
-      retryWrites: true,
-    },
-  };
-}
-
-function buildProviderErrorDetails(
-  target: Extract<SetupCheckTarget, "llm" | "embedding">,
-  provider: string,
-): {
-  code: SetupCheckErrorCode;
-  details: SetupDiagnostics;
-} {
-  const isAuthError = randomInt(0, 1) === 0;
-  const prefix = target === "llm" ? "LLM" : "EMBEDDING";
-
-  if (isAuthError) {
-    return {
-      code:
-        target === "llm" ? "LLM_PROVIDER_ERROR" : "EMBEDDING_PROVIDER_ERROR",
-      details: {
-        provider,
-        httpStatus: 401,
-        providerErrorType: "authentication_error",
-        providerErrorCode: "invalid_api_key",
-        providerErrorMessage: "API key is invalid or expired",
-      },
-    };
-  }
-
-  return {
-    code: target === "llm" ? "LLM_NETWORK_ERROR" : "EMBEDDING_NETWORK_ERROR",
-    details: {
-      provider,
-      networkErrorName: `${prefix}_PROBE_TIMEOUT`,
-      networkErrorMessage:
-        "request timed out before receiving response headers",
-      timeoutMs: target === "llm" ? 45000 : 30000,
-    },
-  };
-}
-
 export async function runSetupServiceCheck(
   target: SetupCheckTarget,
   request: SetupServiceCheckRequest,
@@ -218,37 +151,19 @@ export async function runSetupServiceCheck(
   const startedAt = now();
   const phase = request.phase ?? "step";
 
-  await sleep(randomInt(560, 940));
-
   if (target === "mongo") {
-    const config = request.config as SetupDraft["mongo"] | undefined;
-    if (!config || !isMongoConfigComplete(config)) {
-      return failureFromIssues(
-        target,
-        phase,
-        startedAt,
-        validationIssuesForCheck("mongo", config),
-      );
-    }
-
-    const ok = shouldPassProbe();
-    const error = ok ? null : buildMongoErrorDetails(config);
     return createCheckResponse({
       target,
       phase,
       startedAt,
-      ok,
-      errorCode: error?.code,
-      errorDetails: error?.details,
+      ok: false,
+      errorCode: "UNSUPPORTED",
+      retryable: false,
+      errorDetails: {
+        reason: "setup_mongo_config_removed",
+      },
       diagnostics: {
-        kind: config.kind,
-        database: config.dbName,
-        endpoint:
-          config.kind === "memory"
-            ? "mongodb-memory-server"
-            : hostFromUrl(config.uri),
-        roundTripMs: randomInt(22, 180),
-        collectionsPreview: ok ? 12 : 0,
+        reason: "MongoDB is configured before WebUI starts.",
       },
     });
   }
@@ -272,15 +187,18 @@ export async function runSetupServiceCheck(
       );
     }
 
-    const ok = shouldPassProbe();
-    const error = ok ? null : buildProviderErrorDetails("llm", config.provider);
-    return createCheckResponse({
+    const resolved = buildLlmConfigForCheck(config);
+    const server = await ensureEmaServer();
+    const probe = await server.controller.settings.probeLlmConfig(
+      resolved.config,
+    );
+    return createProbeCheckResponse({
       target,
       phase,
       startedAt,
-      ok,
-      errorCode: error?.code,
-      errorDetails: error?.details,
+      provider: config.provider,
+      model: config.model,
+      probe,
       diagnostics: {
         provider: config.provider,
         model: config.model,
@@ -289,9 +207,8 @@ export async function runSetupServiceCheck(
           ? "vertex-ai"
           : hostFromUrl(config.baseUrl),
         credentialRef: config.useVertexAi
-          ? config.projectEnvKey
+          ? config.credentialsEnvKey
           : config.envKey,
-        latencyMs: randomInt(180, 1500),
       },
     });
   }
@@ -306,39 +223,136 @@ export async function runSetupServiceCheck(
     );
   }
 
-  const dimensions = config.provider === "openai" ? 3072 : 3072;
-  const ok = shouldPassProbe();
-  const error = ok
-    ? null
-    : buildProviderErrorDetails("embedding", config.provider);
-  return createCheckResponse({
+  const resolved = buildEmbeddingConfigForCheck(config);
+  const server = await ensureEmaServer();
+  const probe = await server.controller.settings.probeEmbeddingConfig(
+    resolved.config,
+  );
+  return createProbeCheckResponse({
     target,
     phase,
     startedAt,
-    ok,
-    errorCode: error?.code,
-    errorDetails: error?.details,
+    provider: config.provider,
+    model: config.model,
+    probe,
     diagnostics: {
       provider: config.provider,
       model: config.model,
       endpoint: config.useVertexAi ? "vertex-ai" : hostFromUrl(config.baseUrl),
-      credentialRef: config.useVertexAi ? config.projectEnvKey : config.envKey,
-      vectorDimensions: dimensions,
-      latencyMs: randomInt(120, 900),
+      credentialRef: config.useVertexAi
+        ? config.credentialsEnvKey
+        : config.envKey,
     },
   });
 }
 
+interface ProbeResult {
+  ok: boolean;
+  unsupported: boolean;
+  message: string;
+  diagnostics?: SetupDiagnostics;
+}
+
+function createProbeCheckResponse({
+  target,
+  phase,
+  startedAt,
+  provider,
+  model,
+  probe,
+  diagnostics,
+}: {
+  target: Extract<SetupCheckTarget, "llm" | "embedding">;
+  phase: SetupCheckPhase;
+  startedAt: string;
+  provider: string;
+  model: string;
+  probe: ProbeResult;
+  diagnostics: SetupDiagnostics;
+}): SetupServiceCheckResponse {
+  const errorCode = probe.ok
+    ? undefined
+    : probe.unsupported
+      ? "UNSUPPORTED"
+      : classifyProbeError(target, probe.message);
+  return createCheckResponse({
+    target,
+    phase,
+    startedAt,
+    ok: probe.ok,
+    retryable: !probe.unsupported,
+    errorCode,
+    errorDetails: probe.ok
+      ? undefined
+      : {
+          provider,
+          model,
+          providerErrorType: probe.unsupported
+            ? "unsupported"
+            : "provider_probe_failed",
+          providerErrorMessage: probe.message,
+        },
+    diagnostics: {
+      ...diagnostics,
+      ...(probe.diagnostics ?? {}),
+    },
+  });
+}
+
+function classifyProbeError(
+  target: Extract<SetupCheckTarget, "llm" | "embedding">,
+  message: string,
+): SetupCheckErrorCode {
+  const normalized = message.toLowerCase();
+  const networkLike =
+    normalized.includes("timeout") ||
+    normalized.includes("network") ||
+    normalized.includes("fetch") ||
+    normalized.includes("econn") ||
+    normalized.includes("enotfound") ||
+    normalized.includes("etimedout") ||
+    normalized.includes("abort");
+  if (networkLike) {
+    return target === "llm" ? "LLM_NETWORK_ERROR" : "EMBEDDING_NETWORK_ERROR";
+  }
+  return target === "llm" ? "LLM_PROVIDER_ERROR" : "EMBEDDING_PROVIDER_ERROR";
+}
+
+function buildLlmConfigForCheck(config: SetupDraft["llm"]): {
+  config: LLMConfig;
+} {
+  const draft: SetupDraft = {
+    ...initialDraft,
+    llm: config,
+  };
+  return {
+    config: buildLlmConfig(draft),
+  };
+}
+
+function buildEmbeddingConfigForCheck(config: SetupDraft["embedding"]): {
+  config: EmbeddingConfig;
+} {
+  const draft: SetupDraft = {
+    ...initialDraft,
+    embedding: config,
+  };
+  return {
+    config: buildEmbeddingConfig(draft),
+  };
+}
+
 export async function buildSetupStatus(): Promise<SetupStatusResponse> {
-  const owner = await getOwnerUser();
+  const server = await ensureEmaServer();
+  const status = await server.controller.setup.getStatus();
   return {
     apiVersion: API_VERSION,
-    needsInitialization: !owner,
-    reason: owner ? null : "CONFIG_MISSING",
+    needsInitialization: !status.complete,
+    reason: status.complete ? null : "CONFIG_MISSING",
     setupState: {
-      status: owner ? "complete" : "required",
+      status: status.complete ? "complete" : "required",
       configPath: "database:global_config",
-      detectedConfig: Boolean(owner),
+      detectedConfig: status.hasGlobalConfig,
     },
     recommendedSteps: setupSteps,
     capabilities: {
@@ -367,10 +381,14 @@ export function buildDryRunResponse(draft: SetupDraft): SetupDryRunResponse {
       [
         draft.llm.useVertexAi ? draft.llm.projectEnvKey : draft.llm.envKey,
         draft.llm.useVertexAi ? draft.llm.locationEnvKey : null,
+        draft.llm.useVertexAi ? draft.llm.credentialsEnvKey : null,
         draft.embedding.useVertexAi
           ? draft.embedding.projectEnvKey
           : draft.embedding.envKey,
         draft.embedding.useVertexAi ? draft.embedding.locationEnvKey : null,
+        draft.embedding.useVertexAi
+          ? draft.embedding.credentialsEnvKey
+          : null,
       ]
         .filter((value): value is string => Boolean(value))
         .map((value) => value.trim())
@@ -394,11 +412,6 @@ export function buildDryRunResponse(draft: SetupDraft): SetupDryRunResponse {
           id: "write-config",
           title: "写入全局配置",
           status: issues.length === 0 ? "ready" : "blocked",
-        },
-        {
-          id: "connect-mongo",
-          title: "连接 MongoDB 并准备集合",
-          status: isMongoConfigComplete(draft.mongo) ? "ready" : "blocked",
         },
         {
           id: "initialize-owner",
@@ -430,13 +443,140 @@ export async function commitSetupDraft(
     };
   }
 
-  const user = await commitOwnerSetup(draft);
+  const server = await ensureEmaServer();
+  const status = await server.controller.setup.commit({
+    owner: {
+      id: 1,
+      name: draft.owner.name.trim(),
+      description: "",
+      avatar: "",
+    },
+    globalConfig: buildGlobalConfigRecord(draft),
+  });
+  const user = status.owner;
+  if (!status.complete || !user) {
+    return {
+      apiVersion: API_VERSION,
+      ok: false,
+      error: {
+        code: "COMMIT_FAILED",
+        retryable: true,
+        details: {
+          reason: "setup_status_incomplete",
+        },
+      },
+    };
+  }
+
   return {
     apiVersion: API_VERSION,
     ok: true,
     user: {
-      id: user.id,
+      id: String(user.id),
       name: user.name,
     },
   };
+}
+
+function buildGlobalConfigRecord(draft: SetupDraft): GlobalConfigRecord {
+  const nowMs = Date.now();
+  return {
+    id: "global",
+    version: 1,
+    system: {
+      httpsProxy: "",
+    },
+    defaultLlm: buildLlmConfig(draft),
+    defaultEmbedding: buildEmbeddingConfig(draft),
+    defaultWebSearch: DEFAULT_WEB_SEARCH_CONFIG,
+    defaultChannel: DEFAULT_CHANNEL_CONFIG,
+    createdAt: nowMs,
+    updatedAt: nowMs,
+  };
+}
+
+function buildLlmConfig(draft: SetupDraft): LLMConfig {
+  return {
+    provider: draft.llm.provider === "openai" ? "openai" : "google",
+    openai: {
+      mode: draft.llm.mode,
+      model: draft.llm.provider === "openai" ? draft.llm.model.trim() : "",
+      baseUrl:
+        draft.llm.provider === "openai" ? draft.llm.baseUrl.trim() : "",
+      apiKey: draft.llm.provider === "openai" ? resolveSecret(draft.llm.envKey) : "",
+    },
+    google: {
+      model: draft.llm.provider === "google" ? draft.llm.model.trim() : "",
+      baseUrl:
+        draft.llm.provider === "google" && !draft.llm.useVertexAi
+          ? draft.llm.baseUrl.trim()
+          : "",
+      apiKey:
+        draft.llm.provider === "google" && !draft.llm.useVertexAi
+          ? resolveSecret(draft.llm.envKey)
+          : "",
+      useVertexAi: draft.llm.provider === "google" && draft.llm.useVertexAi,
+      project:
+        draft.llm.provider === "google" && draft.llm.useVertexAi
+          ? resolveSecret(draft.llm.projectEnvKey)
+          : "",
+      location:
+        draft.llm.provider === "google" && draft.llm.useVertexAi
+          ? resolveSecret(draft.llm.locationEnvKey)
+          : "",
+      credentialsFile:
+        draft.llm.provider === "google" && draft.llm.useVertexAi
+          ? resolveSecret(draft.llm.credentialsEnvKey)
+          : "",
+    },
+  };
+}
+
+function buildEmbeddingConfig(draft: SetupDraft): EmbeddingConfig {
+  return {
+    provider: draft.embedding.provider,
+    openai: {
+      model:
+        draft.embedding.provider === "openai" ? draft.embedding.model.trim() : "",
+      baseUrl:
+        draft.embedding.provider === "openai"
+          ? draft.embedding.baseUrl.trim()
+          : "",
+      apiKey:
+        draft.embedding.provider === "openai"
+          ? resolveSecret(draft.embedding.envKey)
+          : "",
+    },
+    google: {
+      model:
+        draft.embedding.provider === "google" ? draft.embedding.model.trim() : "",
+      baseUrl:
+        draft.embedding.provider === "google" && !draft.embedding.useVertexAi
+          ? draft.embedding.baseUrl.trim()
+          : "",
+      apiKey:
+        draft.embedding.provider === "google" && !draft.embedding.useVertexAi
+          ? resolveSecret(draft.embedding.envKey)
+          : "",
+      useVertexAi:
+        draft.embedding.provider === "google" && draft.embedding.useVertexAi,
+      project:
+        draft.embedding.provider === "google" && draft.embedding.useVertexAi
+          ? resolveSecret(draft.embedding.projectEnvKey)
+          : "",
+      location:
+        draft.embedding.provider === "google" && draft.embedding.useVertexAi
+          ? resolveSecret(draft.embedding.locationEnvKey)
+          : "",
+      credentialsFile:
+        draft.embedding.provider === "google" && draft.embedding.useVertexAi
+          ? resolveSecret(draft.embedding.credentialsEnvKey)
+          : "",
+    },
+  };
+}
+
+function resolveSecret(envKey: string): string {
+  const key = envKey.trim();
+  return process.env[key]?.trim() ?? "";
 }

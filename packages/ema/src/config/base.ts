@@ -60,6 +60,7 @@ export interface GoogleLLMConfig {
   readonly useVertexAi: boolean;
   readonly project: string;
   readonly location: string;
+  readonly credentialsFile: string;
 }
 
 /** Complete chat LLM configuration used at runtime. */
@@ -84,6 +85,7 @@ export interface GoogleEmbeddingConfig {
   readonly useVertexAi: boolean;
   readonly project: string;
   readonly location: string;
+  readonly credentialsFile: string;
 }
 
 /** Complete embedding configuration used at runtime. */
@@ -171,6 +173,7 @@ export const DEFAULT_LLM_CONFIG: LLMConfig = {
     useVertexAi: false,
     project: "",
     location: "",
+    credentialsFile: "",
   },
 };
 
@@ -188,6 +191,7 @@ export const DEFAULT_EMBEDDING_CONFIG: EmbeddingConfig = {
     useVertexAi: false,
     project: "",
     location: "",
+    credentialsFile: "",
   },
 };
 

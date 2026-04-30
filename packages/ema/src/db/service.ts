@@ -255,7 +255,6 @@ export class DBService {
   async getDefaultUser(): Promise<{
     id: number;
     name: string;
-    email: string;
   } | null> {
     const user = await this.userDB.getUser(DEFAULT_WEB_USER_ID);
     if (!user || typeof user.id !== "number") {
@@ -264,7 +263,6 @@ export class DBService {
     return {
       id: user.id,
       name: user.name,
-      email: user.email,
     };
   }
 

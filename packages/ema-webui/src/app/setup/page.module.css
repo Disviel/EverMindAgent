@@ -35,7 +35,7 @@
 .topbar > div {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   min-width: 0;
 }
 
@@ -68,67 +68,20 @@
   letter-spacing: -0.025em;
 }
 
-.themeButton {
-  display: inline-grid;
+.versionBadge {
+  display: inline-flex;
   flex: 0 0 auto;
-  width: 34px;
-  height: 34px;
-  place-items: center;
-  padding: 0;
-  border: 1px solid var(--border);
+  align-items: center;
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--border));
   border-radius: 999px;
-  background-color: var(--surface-raised);
-  color: var(--text-muted);
-  transition:
-    background-color 190ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    border-color var(--transition-fast),
-    color var(--transition-fast),
-    box-shadow var(--transition-fast),
-    transform 190ms cubic-bezier(0.2, 0.8, 0.2, 1);
-  will-change: transform;
-}
-
-.themeButton:hover {
-  border-color: var(--border-strong);
-  background-color: var(--surface-active);
-  color: var(--text);
-  transform: translateY(-1px);
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
-}
-
-.themeButton:active {
-  border-color: var(--border-strong);
-  background-color: var(--surface-hover);
-  color: var(--text);
-  transform: translateY(0) scale(0.96);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
-}
-
-.themeButton:focus-visible {
-  outline: 0;
-  box-shadow: 0 0 0 4px var(--accent-soft);
-}
-
-.themeButton svg {
-  width: 18px;
-  height: 18px;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.8;
-}
-
-:global([data-theme="light"]) .themeButton {
-  border-color: var(--border);
-  background-color: var(--surface-raised);
-  color: var(--text-muted);
-}
-
-:global([data-theme="light"]) .themeButton:hover {
-  border-color: var(--border-strong);
-  background-color: var(--surface-hover);
-  color: var(--text);
+  padding: 3px 8px;
+  background: color-mix(in srgb, var(--accent-soft) 56%, transparent);
+  color: color-mix(in srgb, var(--accent-hover) 88%, var(--text));
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 760;
+  letter-spacing: -0.015em;
+  line-height: 1;
 }
 
 .setupFrame {
@@ -377,22 +330,23 @@
 .formGrid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 18px;
+  gap: 14px;
   max-width: 680px;
 }
 
 .field {
   display: grid;
-  gap: 8px;
+  gap: 7px;
 }
 
 .fieldLabel {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  color: var(--text-muted);
-  font-size: 0.9rem;
-  font-weight: 650;
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 760;
+  letter-spacing: -0.012em;
 }
 
 .requiredMarker,
@@ -420,12 +374,16 @@
 .field select,
 .field textarea {
   width: 100%;
-  border: 1px solid var(--border);
+  min-height: 40px;
+  border: 1px solid color-mix(in srgb, var(--border-strong) 62%, transparent);
   border-radius: 999px;
   outline: none;
-  padding: 13px 16px;
-  background: var(--field-bg);
+  padding: 0 14px;
+  background: color-mix(in srgb, var(--surface-inset) 58%, transparent);
   color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 430;
+  letter-spacing: -0.006em;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
   transition:
     border-color var(--transition-fast),
@@ -435,6 +393,7 @@
 
 .field textarea {
   border-radius: 14px;
+  padding-block: 10px;
   resize: vertical;
   line-height: 1.55;
 }
@@ -443,7 +402,7 @@
 .field select:focus,
 .field textarea:focus {
   border-color: var(--accent);
-  background: var(--surface-raised);
+  background: color-mix(in srgb, var(--surface-raised) 26%, transparent);
   box-shadow:
     0 0 0 4px var(--accent-soft),
     inset 0 1px 0 rgba(255, 255, 255, 0.03);
@@ -451,14 +410,17 @@
 
 .field input[aria-invalid="true"],
 .field select[aria-invalid="true"],
-.field textarea[aria-invalid="true"] {
+.field textarea[aria-invalid="true"],
+.modelSelectButton[data-invalid="true"] {
   border-color: color-mix(in srgb, var(--danger) 58%, var(--border));
   background: color-mix(in srgb, var(--danger-soft) 22%, var(--field-bg));
 }
 
 .field input[aria-invalid="true"]:focus,
 .field select[aria-invalid="true"]:focus,
-.field textarea[aria-invalid="true"]:focus {
+.field textarea[aria-invalid="true"]:focus,
+.modelSelectButton[data-invalid="true"]:focus-visible,
+.modelSelectButtonOpen[data-invalid="true"] {
   border-color: var(--danger);
   box-shadow:
     0 0 0 4px color-mix(in srgb, var(--danger-soft) 84%, transparent),
@@ -468,6 +430,11 @@
 .field input:disabled,
 .field textarea:disabled {
   opacity: 0.5;
+}
+
+.field input::placeholder,
+.field textarea::placeholder {
+  color: var(--text-subtle);
 }
 
 .fieldHint {
@@ -483,30 +450,194 @@
   animation: chipEnter 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
+.setupControlGroup {
+  display: grid;
+  width: min(100%, 680px);
+  gap: 7px;
+}
+
+.setupControlTitle {
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 760;
+  letter-spacing: -0.012em;
+}
+
+.modelSelect {
+  position: relative;
+  min-width: 0;
+}
+
+.modelSelectButton {
+  display: grid;
+  width: 100%;
+  height: 40px;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid color-mix(in srgb, var(--border-strong) 62%, transparent);
+  border-radius: 999px;
+  padding: 0 14px;
+  background: color-mix(in srgb, var(--surface-inset) 58%, transparent);
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 430;
+  letter-spacing: -0.006em;
+  outline: 0;
+  text-align: left;
+  transition:
+    border-color 170ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    background-color 170ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 170ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    transform 170ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.modelSelectButton:hover {
+  border-color: color-mix(in srgb, var(--border-strong) 78%, transparent);
+  background: color-mix(in srgb, var(--surface-raised) 34%, transparent);
+}
+
+.modelSelectButton:active {
+  transform: scale(0.995);
+}
+
+.modelSelectButton:focus-visible,
+.modelSelectButtonOpen {
+  border-color: color-mix(in srgb, var(--accent) 62%, var(--border-strong));
+  background: color-mix(in srgb, var(--surface-raised) 26%, transparent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.modelSelectButton > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modelSelectButton > svg {
+  width: 16px;
+  height: 16px;
+  color: var(--text-muted);
+  stroke-width: 2.4;
+  transition:
+    color 170ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    transform 190ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.modelSelectButtonOpen > svg {
+  color: var(--text);
+  transform: rotate(180deg);
+}
+
+.modelSelectPlaceholder {
+  color: var(--text-subtle);
+}
+
+.modelSelectMenu {
+  position: absolute;
+  z-index: 8;
+  top: calc(100% + 7px);
+  right: 0;
+  left: 0;
+  display: grid;
+  gap: 4px;
+  border: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
+  border-radius: 18px;
+  padding: 6px;
+  background: color-mix(in srgb, var(--surface-raised) 92%, black 6%);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.34);
+  transform-origin: top center;
+  animation: modelSelectMenuEnter 160ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.modelSelectOption {
+  display: grid;
+  min-height: 34px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 10px 0 12px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 560;
+  letter-spacing: -0.01em;
+  outline: 0;
+  text-align: left;
+  transition:
+    background-color 150ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    color 150ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    transform 150ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.modelSelectOption > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modelSelectOption > svg {
+  width: 15px;
+  height: 15px;
+  color: var(--accent);
+  stroke-width: 2.6;
+}
+
+.modelSelectOption:hover,
+.modelSelectOption:focus-visible {
+  background: color-mix(in srgb, var(--surface-hover) 72%, transparent);
+  color: var(--text);
+}
+
+.modelSelectOption:active {
+  transform: scale(0.99);
+}
+
+.modelSelectOptionActive {
+  background: color-mix(in srgb, var(--accent) 20%, var(--surface-active));
+  color: var(--text);
+  font-weight: 700;
+}
+
+.modelSelectOptionDisabled {
+  color: color-mix(in srgb, var(--text-subtle) 88%, transparent);
+  cursor: not-allowed;
+  opacity: 0.72;
+  pointer-events: none;
+}
+
 .segmentedControl {
   display: inline-grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-  width: min(100%, 420px);
-  border: 1px solid var(--border);
+  gap: 4px;
+  width: min(100%, 680px);
+  border: 0;
   border-radius: 999px;
   padding: 4px;
-  background-color: var(--field-bg);
+  background: color-mix(in srgb, var(--surface-raised) 68%, transparent);
 }
 
 .segmentedTriple {
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  width: min(100%, 560px);
+  width: min(100%, 680px);
 }
 
 .segmentedTab {
-  border: 1px solid transparent;
+  height: 32px;
+  min-width: 0;
+  border: 0;
   border-radius: 999px;
-  padding: 9px 16px;
+  padding: 0 12px;
   background-color: transparent;
-  color: var(--text-subtle);
-  font-size: 0.9rem;
-  font-weight: 650;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
   transition:
     background-color 190ms cubic-bezier(0.2, 0.8, 0.2, 1),
     border-color var(--transition-fast),
@@ -516,8 +647,8 @@
 }
 
 .segmentedTab:hover {
-  background-color: var(--surface-hover);
-  color: var(--text-muted);
+  background-color: color-mix(in srgb, var(--surface-hover) 72%, transparent);
+  color: var(--text);
 }
 
 .segmentedTab:active {
@@ -525,42 +656,49 @@
 }
 
 .segmentedActive {
-  border-color: color-mix(in srgb, var(--accent) 44%, var(--border));
-  background-color: color-mix(
-    in srgb,
-    var(--accent-soft) 78%,
-    var(--surface-raised)
-  );
+  background-color: color-mix(in srgb, var(--accent) 28%, var(--surface-active));
   color: var(--text);
-  box-shadow:
-    0 8px 18px color-mix(in srgb, var(--accent) 14%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  box-shadow: none;
 }
 
 .switchRow {
   position: relative;
-  display: inline-flex;
-  width: fit-content;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  width: min(100%, 680px);
+  height: 46px;
   align-items: center;
-  gap: 14px;
-  padding: 2px 0;
-  color: var(--text-muted);
+  gap: 9px;
+  border-radius: 999px;
+  padding: 0 13px 0 16px;
+  background: color-mix(in srgb, var(--surface-raised) 86%, white 2%);
+  color: var(--text);
   cursor: pointer;
-  transition: color var(--transition-fast);
+  transition:
+    background-color 170ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    color 170ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 170ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    transform 170ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .switchRow:hover {
+  background: color-mix(in srgb, var(--surface-raised) 74%, white 8%);
   color: var(--text);
+  transform: translateY(-1px);
 }
 
 .switchRow > span:first-child {
-  display: inline-flex;
+  display: grid;
+  min-width: 0;
+  align-content: center;
 }
 
 .switchRow strong {
   color: currentColor;
-  font-size: 0.9rem;
-  font-weight: 650;
+  font-size: 0.86rem;
+  font-weight: 780;
+  letter-spacing: -0.02em;
+  line-height: 1.08;
 }
 
 .switchRow small {
@@ -579,11 +717,11 @@
   position: relative;
   display: inline-flex;
   flex: 0 0 auto;
-  width: 48px;
-  height: 28px;
-  border: 1px solid var(--border-strong);
+  width: 40px;
+  height: 22px;
+  border: 0;
   border-radius: 999px;
-  background-color: var(--surface-raised);
+  background-color: color-mix(in srgb, var(--surface-active) 70%, transparent);
   transition:
     background-color 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
     border-color var(--transition-fast),
@@ -594,10 +732,10 @@
   position: absolute;
   top: 3px;
   left: 3px;
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   border-radius: 999px;
-  background-color: var(--text-subtle);
+  background-color: color-mix(in srgb, var(--text-muted) 80%, var(--surface-raised));
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.24);
   transition:
     background-color 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
@@ -605,62 +743,21 @@
 }
 
 .switchRow input:checked + .switchTrack {
-  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
   background-color: color-mix(
     in srgb,
-    var(--accent) 76%,
-    var(--surface-raised)
+    var(--accent) 58%,
+    var(--surface-active)
   );
-  box-shadow: 0 0 0 4px var(--accent-soft);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .switchRow input:checked + .switchTrack .switchThumb {
-  background-color: #ffffff;
-  transform: translateX(20px);
+  background-color: color-mix(in srgb, white 90%, var(--accent));
+  transform: translateX(18px);
 }
 
 .switchRow input:focus-visible + .switchTrack {
   box-shadow: 0 0 0 4px var(--accent-soft);
-}
-
-.testRow {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.inlineStatus {
-  display: inline-flex;
-  min-width: 0;
-  min-height: 40px;
-  align-items: center;
-  gap: 10px;
-  color: var(--text-muted);
-  font-size: 0.86rem;
-  line-height: 1.4;
-  animation: chipEnter 240ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
-  transition: color 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-
-.inlineStatus > span:last-child {
-  max-width: min(44vw, 420px);
-}
-
-.inlineStatusTesting {
-  color: var(--accent-hover);
-}
-
-.inlineStatusSuccess {
-  color: var(--success);
-}
-
-.inlineStatusIconOnly {
-  gap: 0;
-}
-
-.inlineStatusFailed {
-  color: var(--danger);
 }
 
 .errorDetails {
@@ -776,139 +873,6 @@
   text-transform: uppercase;
 }
 
-.connectionStatus {
-  position: relative;
-  display: inline-grid;
-  width: 40px;
-  height: 40px;
-  place-items: center;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background-color: var(--surface-raised);
-  color: var(--text-muted);
-  overflow: hidden;
-  transform-origin: center;
-  animation: statusEnter 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
-  transition:
-    background-color 240ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    border-color 240ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    box-shadow 240ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    color 240ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-
-.statusTesting {
-  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
-  color: var(--accent-hover);
-}
-
-.statusSuccess {
-  border-color: color-mix(in srgb, var(--success) 46%, var(--border));
-  background-color: var(--success-soft);
-  color: var(--success);
-  box-shadow: 0 0 0 5px color-mix(in srgb, var(--success-soft) 70%, transparent);
-  animation: statusSuccessPop 460ms cubic-bezier(0.18, 0.9, 0.22, 1.25) both;
-}
-
-.statusFailed {
-  border-color: color-mix(in srgb, var(--danger) 46%, var(--border));
-  background-color: var(--danger-soft);
-  color: var(--danger);
-}
-
-.connectionStatus svg {
-  position: absolute;
-  width: 20px;
-  height: 20px;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 2.4;
-}
-
-.spinnerIcon {
-  opacity: 0;
-  transform-origin: center;
-  transition:
-    opacity 160ms ease,
-    transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-
-.spinnerIcon circle {
-  stroke-dasharray: 58;
-  stroke-dashoffset: 46;
-  transform-origin: center;
-}
-
-.statusTesting .spinnerIcon {
-  opacity: 1;
-  animation: spinnerRotate 1.25s linear infinite;
-}
-
-.statusTesting .spinnerIcon circle {
-  animation: spinnerDash 1.25s ease-in-out infinite;
-}
-
-.checkIcon,
-.failedIcon {
-  opacity: 0;
-  transform: scale(0.72);
-  transition:
-    opacity 180ms ease,
-    transform 280ms cubic-bezier(0.18, 0.9, 0.22, 1.25);
-}
-
-.checkIcon path,
-.failedIcon path {
-  stroke-dasharray: 24;
-  stroke-dashoffset: 24;
-}
-
-.statusSuccess .checkIcon {
-  opacity: 1;
-  transform: scale(1);
-}
-
-.statusSuccess .checkIcon path {
-  animation: drawStatusIcon 420ms 90ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
-}
-
-.statusFailed .failedIcon {
-  opacity: 1;
-  transform: scale(1);
-}
-
-.statusFailed .failedIcon path {
-  animation: drawStatusIcon 360ms 60ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
-}
-
-@keyframes statusEnter {
-  from {
-    opacity: 0;
-    transform: scale(0.86);
-  }
-
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes statusSuccessPop {
-  0% {
-    transform: scale(0.96);
-  }
-
-  58% {
-    transform: scale(1.1);
-  }
-
-  100% {
-    transform: scale(1);
-  }
-}
-
 @keyframes spinnerRotate {
   to {
     transform: rotate(360deg);
@@ -929,16 +893,22 @@
   }
 }
 
-@keyframes drawStatusIcon {
-  to {
-    stroke-dashoffset: 0;
-  }
-}
-
 @keyframes chipEnter {
   from {
     opacity: 0;
     transform: translateY(6px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes modelSelectMenuEnter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
   }
 
   to {
@@ -1044,7 +1014,7 @@
   --final-line-shadow: color-mix(in srgb, var(--accent) 20%, transparent);
   position: relative;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   align-items: start;
   gap: 10px;
   padding-top: 2px;
@@ -1055,8 +1025,8 @@
   position: absolute;
   z-index: 0;
   top: 16px;
-  right: 12.5%;
-  left: 12.5%;
+  right: 16.666%;
+  left: 16.666%;
   height: 2px;
   border-radius: 999px;
   content: "";
@@ -1068,7 +1038,7 @@
 
 .finalTrack::after {
   width: var(--final-progress);
-  max-width: 75%;
+  max-width: 66.666%;
   background: var(--final-line-background);
   box-shadow: 0 0 16px var(--final-line-shadow);
   transition:
@@ -1279,7 +1249,7 @@
 }
 
 .welcomeName {
-  color: var(--welcome-name);
+  color: var(--accent-hover);
 }
 
 @keyframes welcomeReveal {
@@ -1385,10 +1355,12 @@
 .primaryButton,
 .secondaryButton,
 .textButton {
-  min-height: 40px;
+  width: 96px;
+  height: 40px;
   border-radius: 999px;
-  padding: 10px 18px;
+  padding: 0 14px;
   font-weight: 650;
+  line-height: 1;
   transition:
     background-color 190ms cubic-bezier(0.2, 0.8, 0.2, 1),
     border-color var(--transition-fast),
@@ -1399,6 +1371,10 @@
 }
 
 .primaryButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
   border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--border));
   background-color: color-mix(
     in srgb,
@@ -1409,6 +1385,40 @@
   box-shadow:
     0 8px 18px color-mix(in srgb, var(--accent) 12%, transparent),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.primaryButton svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.6;
+}
+
+.primaryButtonLoading svg {
+  animation: spinnerRotate 1s linear infinite;
+}
+
+.primaryButtonSuccess {
+  border-color: color-mix(in srgb, var(--success) 58%, var(--border));
+  background-color: color-mix(in srgb, var(--success-soft) 82%, var(--surface-raised));
+  color: var(--success);
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, var(--success-soft) 68%, transparent),
+    0 10px 22px color-mix(in srgb, var(--success) 12%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.primaryButtonFailed {
+  border-color: color-mix(in srgb, var(--danger) 56%, var(--border));
+  background-color: color-mix(in srgb, var(--danger-soft) 82%, var(--surface-raised));
+  color: var(--danger);
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, var(--danger-soft) 68%, transparent),
+    0 10px 22px color-mix(in srgb, var(--danger) 12%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .primaryButton:hover:not(:disabled) {
@@ -1475,6 +1485,12 @@
   transform: none;
 }
 
+.primaryButtonLoading:disabled,
+.primaryButtonSuccess:disabled,
+.primaryButtonFailed:disabled {
+  opacity: 1;
+}
+
 @media (max-width: 880px) {
   .shell {
     padding: 20px;
@@ -1483,11 +1499,6 @@
   .topbar {
     width: 100%;
     gap: 16px;
-  }
-
-  .themeButton {
-    width: 34px;
-    height: 34px;
   }
 
   .setupFrame {
@@ -1555,6 +1566,7 @@
   .actionGroup button,
   .textButton {
     flex: 1;
+    width: auto;
   }
 }
 

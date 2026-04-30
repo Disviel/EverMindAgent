@@ -113,6 +113,7 @@ export interface ActorLlmConfig {
     useVertexAi: boolean;
     project: string;
     location: string;
+    credentialsFile: string;
   };
 }
 

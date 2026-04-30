@@ -1,4 +1,4 @@
-export type SetupStepId = "mongo" | "llm" | "embedding" | "owner" | "review";
+export type SetupStepId = "llm" | "embedding" | "owner" | "review";
 
 export type MongoKind = "memory" | "remote";
 export type LLMProvider = "google" | "openai" | "anthropic";
@@ -42,6 +42,7 @@ export interface SetupDraft {
     useVertexAi: boolean;
     projectEnvKey: string;
     locationEnvKey: string;
+    credentialsEnvKey: string;
   };
   embedding: {
     provider: EmbeddingProvider;
@@ -51,10 +52,10 @@ export interface SetupDraft {
     useVertexAi: boolean;
     projectEnvKey: string;
     locationEnvKey: string;
+    credentialsEnvKey: string;
   };
   owner: {
     name: string;
-    email: string;
     qq: string;
   };
 }
@@ -160,18 +161,13 @@ export interface SetupStatusResponse {
 
 export const setupSteps: SetupStepDefinition[] = [
   {
-    id: "mongo",
-    title: "连接 MongoDB",
-    description: "保存长期记忆与运行数据",
-  },
-  {
     id: "llm",
-    title: "配置 LLM 服务",
+    title: "配置默认 LLM 服务",
     description: "选择负责思考与回应的模型",
   },
   {
     id: "embedding",
-    title: "配置 Embedding 服务",
+    title: "配置默认 Embedding 服务",
     description: "让记忆可以被准确检索",
   },
   {
@@ -196,26 +192,29 @@ export const llmDefaults: Record<LLMProvider, SetupDraft["llm"]> = {
     useVertexAi: false,
     projectEnvKey: "GOOGLE_CLOUD_PROJECT",
     locationEnvKey: "GOOGLE_CLOUD_LOCATION",
+    credentialsEnvKey: "GOOGLE_APPLICATION_CREDENTIALS",
   },
   openai: {
     provider: "openai",
-    mode: "responses",
-    model: "gpt-5.4",
+    mode: "chat",
+    model: "",
     baseUrl: "https://api.openai.com/v1",
     envKey: "OPENAI_API_KEY",
     useVertexAi: false,
     projectEnvKey: "",
     locationEnvKey: "",
+    credentialsEnvKey: "",
   },
   anthropic: {
     provider: "anthropic",
     mode: "chat",
-    model: "claude-sonnet-4-5",
+    model: "",
     baseUrl: "https://api.anthropic.com",
     envKey: "ANTHROPIC_API_KEY",
     useVertexAi: false,
     projectEnvKey: "",
     locationEnvKey: "",
+    credentialsEnvKey: "",
   },
 };
 
@@ -231,6 +230,7 @@ export const embeddingDefaults: Record<
     useVertexAi: false,
     projectEnvKey: "GOOGLE_CLOUD_PROJECT",
     locationEnvKey: "GOOGLE_CLOUD_LOCATION",
+    credentialsEnvKey: "GOOGLE_APPLICATION_CREDENTIALS",
   },
   openai: {
     provider: "openai",
@@ -240,6 +240,7 @@ export const embeddingDefaults: Record<
     useVertexAi: false,
     projectEnvKey: "",
     locationEnvKey: "",
+    credentialsEnvKey: "",
   },
 };
 
@@ -253,7 +254,6 @@ export const initialDraft: SetupDraft = {
   embedding: embeddingDefaults.google,
   owner: {
     name: "",
-    email: "",
     qq: "",
   },
 };
@@ -262,7 +262,6 @@ export const hasRequiredValue = (value: string) => value.trim().length > 0;
 
 const envKeyPattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const qqPattern = /^[1-9]\d{4,11}$/;
-const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function isHttpUrl(value: string) {
   try {
@@ -317,7 +316,10 @@ export function isLLMConfigComplete(llm: SetupDraft["llm"]) {
       isEnvKey(llm.projectEnvKey.trim()) &&
       hasRequiredValue(llm.locationEnvKey) &&
       llm.locationEnvKey.trim().length <= 128 &&
-      isEnvKey(llm.locationEnvKey.trim())
+      isEnvKey(llm.locationEnvKey.trim()) &&
+      hasRequiredValue(llm.credentialsEnvKey) &&
+      llm.credentialsEnvKey.trim().length <= 128 &&
+      isEnvKey(llm.credentialsEnvKey.trim())
     );
   }
 
@@ -346,7 +348,10 @@ export function isEmbeddingConfigComplete(embedding: SetupDraft["embedding"]) {
       isEnvKey(embedding.projectEnvKey.trim()) &&
       hasRequiredValue(embedding.locationEnvKey) &&
       embedding.locationEnvKey.trim().length <= 128 &&
-      isEnvKey(embedding.locationEnvKey.trim())
+      isEnvKey(embedding.locationEnvKey.trim()) &&
+      hasRequiredValue(embedding.credentialsEnvKey) &&
+      embedding.credentialsEnvKey.trim().length <= 128 &&
+      isEnvKey(embedding.credentialsEnvKey.trim())
     );
   }
 
@@ -383,8 +388,6 @@ export function isOwnerComplete(draft: SetupDraft) {
 
 export function isStepComplete(stepId: SetupStepId, draft: SetupDraft) {
   switch (stepId) {
-    case "mongo":
-      return isMongoComplete(draft);
     case "llm":
       return isLLMComplete(draft);
     case "embedding":
@@ -398,38 +401,6 @@ export function isStepComplete(stepId: SetupStepId, draft: SetupDraft) {
 
 export function validateSetupDraft(draft: SetupDraft): SetupValidationIssue[] {
   const issues: SetupValidationIssue[] = [];
-
-  if (!isMongoConfigComplete(draft.mongo)) {
-    if (draft.mongo.kind === "remote" && !hasRequiredValue(draft.mongo.uri)) {
-      issues.push({
-        path: "mongo.uri",
-        code: "required",
-      });
-    } else if (
-      draft.mongo.kind === "remote" &&
-      (!isMongoUri(draft.mongo.uri.trim()) ||
-        draft.mongo.uri.trim().length > 512)
-    ) {
-      issues.push({
-        path: "mongo.uri",
-        code: "invalid",
-      });
-    }
-    if (!hasRequiredValue(draft.mongo.dbName)) {
-      issues.push({
-        path: "mongo.dbName",
-        code: "required",
-      });
-    } else if (
-      draft.mongo.dbName.trim().length > 64 ||
-      /[\\/"$ ]/.test(draft.mongo.dbName.trim())
-    ) {
-      issues.push({
-        path: "mongo.dbName",
-        code: "invalid",
-      });
-    }
-  }
 
   if (!isLLMConfigSupported(draft.llm)) {
     issues.push({
@@ -474,6 +445,20 @@ export function validateSetupDraft(draft: SetupDraft): SetupValidationIssue[] {
       ) {
         issues.push({
           path: "llm.locationEnvKey",
+          code: "invalid",
+        });
+      }
+      if (!hasRequiredValue(draft.llm.credentialsEnvKey)) {
+        issues.push({
+          path: "llm.credentialsEnvKey",
+          code: "required",
+        });
+      } else if (
+        draft.llm.credentialsEnvKey.trim().length > 128 ||
+        !isEnvKey(draft.llm.credentialsEnvKey.trim())
+      ) {
+        issues.push({
+          path: "llm.credentialsEnvKey",
           code: "invalid",
         });
       }
@@ -550,6 +535,20 @@ export function validateSetupDraft(draft: SetupDraft): SetupValidationIssue[] {
           code: "invalid",
         });
       }
+      if (!hasRequiredValue(draft.embedding.credentialsEnvKey)) {
+        issues.push({
+          path: "embedding.credentialsEnvKey",
+          code: "required",
+        });
+      } else if (
+        draft.embedding.credentialsEnvKey.trim().length > 128 ||
+        !isEnvKey(draft.embedding.credentialsEnvKey.trim())
+      ) {
+        issues.push({
+          path: "embedding.credentialsEnvKey",
+          code: "invalid",
+        });
+      }
     } else {
       if (!hasRequiredValue(draft.embedding.baseUrl)) {
         issues.push({
@@ -595,16 +594,6 @@ export function validateSetupDraft(draft: SetupDraft): SetupValidationIssue[] {
       path: "owner.name",
       code: "invalid",
     });
-  }
-
-  if (hasRequiredValue(draft.owner.email)) {
-    const email = draft.owner.email.trim();
-    if (email.length > 254 || !emailPattern.test(email)) {
-      issues.push({
-        path: "owner.email",
-        code: "invalid",
-      });
-    }
   }
 
   if (

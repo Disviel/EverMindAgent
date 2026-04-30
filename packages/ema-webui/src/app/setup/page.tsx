@@ -7,15 +7,13 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { Check, LoaderCircle, Moon, Sun, X } from "lucide-react";
+import { Check, ChevronDown, LoaderCircle, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import styles from "./page.module.css";
 
 import {
   embeddingDefaults,
   initialDraft,
-  isEmbeddingComplete,
-  isLLMComplete,
   isStepComplete,
   llmDefaults,
   setupSteps,
@@ -31,6 +29,7 @@ import {
   transportFailureFeedback,
   type CheckFeedback,
 } from "@/types/setup/feedback";
+import { getOwnerStatus } from "@/transport/auth";
 import {
   fieldLimits,
   getStepFieldPaths,
@@ -39,12 +38,10 @@ import {
   type SetupFieldPath,
 } from "@/types/setup/form-validation";
 
-type ThemeMode = "dark" | "light";
 type StepMotion = "forward" | "backward";
 type TestStatus = "idle" | "testing" | "success" | "failed";
 type FinalCheckStatus =
   | "idle"
-  | "mongo"
   | "llm"
   | "embedding"
   | "finalize"
@@ -55,28 +52,48 @@ type FinalReviewStepId = Exclude<
   "idle" | "success" | "failed"
 >;
 type FinalFailedStepId = FinalReviewStepId;
+type PrimaryFeedback = "success" | "failed" | null;
 
 interface TestState {
   status: TestStatus;
   feedback: CheckFeedback | null;
 }
 
+const llmModelOptions: Record<SetupDraft["llm"]["provider"], string[]> = {
+  google: ["gemini-3.1-flash-lite-preview", "gemini-3.1-pro-preview"],
+  openai: [],
+  anthropic: [],
+};
+
+const embeddingModelOptions: Record<
+  SetupDraft["embedding"]["provider"],
+  string[]
+> = {
+  google: ["gemini-embedding-001"],
+  openai: ["text-embedding-3-large"],
+};
+
 const finalReviewSteps: Array<{
   id: FinalReviewStepId;
   title: string;
 }> = [
-  { id: "mongo", title: "MongoDB" },
-  { id: "llm", title: "LLM" },
-  { id: "embedding", title: "Embedding" },
+  { id: "llm", title: "默认 LLM" },
+  { id: "embedding", title: "默认 Embedding" },
   { id: "finalize", title: "生成配置" },
 ];
 
 const finalStepOrder: Record<FinalReviewStepId, number> = {
-  mongo: 0,
-  llm: 1,
-  embedding: 2,
-  finalize: 3,
+  llm: 0,
+  embedding: 1,
+  finalize: 2,
 };
+
+const APP_VERSION_BADGE = "v0.1.0 Beta";
+const CHECK_SUCCESS_HOLD_MS = 560;
+const CHECK_FAILED_HOLD_MS = 820;
+
+const wait = (durationMs: number) =>
+  new Promise((resolve) => setTimeout(resolve, durationMs));
 
 function trimTerminalPunctuation(value: string | null) {
   return value?.replace(/[。.!！?？]+$/u, "") ?? null;
@@ -123,60 +140,90 @@ function Field({
   );
 }
 
-function StatusIndicator({
-  status,
-  message,
+function ModelSelect({
+  value,
+  options,
+  error,
+  onChange,
+  onBlur,
 }: {
-  status: Exclude<TestStatus, "idle">;
-  message: string | null;
+  value: string;
+  options: string[];
+  error?: string | null;
+  onChange: (value: string) => void;
+  onBlur: () => void;
 }) {
-  return (
-    <span
-      className={`${styles.connectionStatus} ${
-        status === "testing"
-          ? styles.statusTesting
-          : status === "success"
-            ? styles.statusSuccess
-            : styles.statusFailed
-      }`}
-      role="status"
-      aria-live="polite"
-      aria-label={status === "testing" ? "正在测试" : (message ?? "测试失败")}
-      title={status === "testing" ? "正在测试" : (message ?? "测试失败")}
-    >
-      <LoaderCircle className={styles.spinnerIcon} aria-hidden="true" />
-      <Check className={styles.checkIcon} aria-hidden="true" />
-      <X className={styles.failedIcon} aria-hidden="true" />
-    </span>
-  );
-}
-
-function InlineStatus({
-  status,
-  feedback,
-  testingText,
-}: {
-  status: Exclude<TestStatus, "idle">;
-  feedback: CheckFeedback | null;
-  testingText: string;
-}) {
-  const statusText =
-    status === "testing"
-      ? testingText
-      : (feedback?.summary ?? (status === "success" ? "检查通过" : "检查失败"));
+  const [open, setOpen] = useState(false);
 
   return (
-    <span
-      className={`${styles.inlineStatus} ${
-        status === "testing"
-          ? styles.inlineStatusTesting
-          : status === "success"
-            ? styles.inlineStatusSuccess
-            : styles.inlineStatusFailed
-      } ${styles.inlineStatusIconOnly}`}
+    <div
+      className={styles.modelSelect}
+      onBlur={(event) => {
+        const nextTarget = event.relatedTarget;
+        if (
+          nextTarget instanceof Node &&
+          event.currentTarget.contains(nextTarget)
+        ) {
+          return;
+        }
+        setOpen(false);
+        onBlur();
+      }}
     >
-      <StatusIndicator status={status} message={statusText} />
-    </span>
+      <button
+        type="button"
+        className={`${styles.modelSelectButton} ${
+          !value ? styles.modelSelectPlaceholder : ""
+        } ${open ? styles.modelSelectButtonOpen : ""}`}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        data-invalid={error ? "true" : undefined}
+        onClick={() => setOpen((current) => !current)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            setOpen(false);
+            event.currentTarget.blur();
+          }
+        }}
+      >
+        <span>{value || "选择模型"}</span>
+        <ChevronDown aria-hidden="true" />
+      </button>
+      {open ? (
+        <div
+          className={styles.modelSelectMenu}
+          role="listbox"
+          aria-label="选择模型"
+        >
+          {options.map((model) => (
+            <button
+              key={model}
+              type="button"
+              role="option"
+              aria-selected={value === model}
+              className={`${styles.modelSelectOption} ${
+                value === model ? styles.modelSelectOptionActive : ""
+              }`}
+              onClick={() => {
+                onChange(model);
+                setOpen(false);
+              }}
+            >
+              <span>{model}</span>
+              {value === model ? <Check aria-hidden="true" /> : null}
+            </button>
+          ))}
+          <span
+            className={`${styles.modelSelectOption} ${styles.modelSelectOptionDisabled}`}
+            role="option"
+            aria-selected="false"
+            aria-disabled="true"
+          >
+            <span>更多模型敬请期待</span>
+          </span>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -225,20 +272,15 @@ function CheckFeedbackDetails({
 
 export default function SetupPage() {
   const router = useRouter();
-  const [themeMode, setThemeMode] = useState<ThemeMode>("dark");
+  const stepErrorRef = useRef<HTMLDivElement | null>(null);
   const [currentStep, setCurrentStep] = useState(0);
   const [stepMotion, setStepMotion] = useState<StepMotion>("forward");
   const [draft, setDraft] = useState<SetupDraft>(initialDraft);
   const [touchedFields, setTouchedFields] = useState<
     Partial<Record<SetupFieldPath, boolean>>
   >({});
-  const mongoTestRun = useRef(0);
   const llmTestRun = useRef(0);
   const embeddingTestRun = useRef(0);
-  const [mongoTest, setMongoTest] = useState<TestState>({
-    status: "idle",
-    feedback: null,
-  });
   const [llmTest, setLlmTest] = useState<TestState>({
     status: "idle",
     feedback: null,
@@ -255,13 +297,14 @@ export default function SetupPage() {
   );
   const [finalAttempt, setFinalAttempt] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [primaryFeedback, setPrimaryFeedback] =
+    useState<PrimaryFeedback>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const step = setupSteps[currentStep];
   const isFirstStep = currentStep === 0;
   const isLastStep = currentStep === setupSteps.length - 1;
   const isFinalTesting =
-    finalCheck === "mongo" ||
     finalCheck === "llm" ||
     finalCheck === "embedding" ||
     finalCheck === "finalize";
@@ -270,31 +313,27 @@ export default function SetupPage() {
   const currentStepValid = currentStepErrors.length === 0;
   const finalProgress =
     finalCheck === "success"
-      ? "75%"
+      ? "66.666%"
       : finalCheck === "failed"
         ? finalFailedStep === "finalize"
-          ? "75%"
+          ? "66.666%"
           : finalFailedStep === "embedding"
-            ? "50%"
-            : finalFailedStep === "llm"
-              ? "25%"
-              : "0%"
+            ? "33.333%"
+            : "0%"
         : finalCheck === "embedding"
-          ? "50%"
+          ? "33.333%"
           : finalCheck === "llm"
-            ? "25%"
+            ? "6%"
             : finalCheck === "finalize"
-              ? "75%"
-              : finalCheck === "mongo"
-                ? "6%"
-                : "0%";
+              ? "66.666%"
+              : "0%";
   const finalTrackStyle = {
     "--final-progress": finalProgress,
     "--final-line-background":
       finalCheck === "success" || finalCheck === "failed"
         ? "var(--success)"
         : finalCheck === "finalize"
-          ? "linear-gradient(90deg, var(--success) 0 66%, var(--accent) 66% 100%)"
+          ? "linear-gradient(90deg, var(--success) 0 50%, var(--accent) 50% 100%)"
           : finalCheck === "embedding"
             ? "linear-gradient(90deg, var(--success) 0 50%, var(--accent) 50% 100%)"
             : "var(--accent)",
@@ -334,30 +373,69 @@ export default function SetupPage() {
   };
   const primaryDisabled =
     busy ||
+    primaryFeedback !== null ||
     !currentStepComplete ||
     !currentStepValid ||
-    (step.id === "mongo" && mongoTest.status !== "success") ||
-    (step.id === "llm" && llmTest.status !== "success") ||
-    (step.id === "embedding" && embeddingTest.status !== "success") ||
     (step.id === "review" &&
       finalCheck !== "success" &&
       finalCheck !== "failed");
   const actionHint = getActionHint();
   const displayActionHint = trimTerminalPunctuation(actionHint);
 
-  useEffect(() => {
-    const stored = window.localStorage.getItem(
-      "ema-webui-theme",
-    ) as ThemeMode | null;
-    if (stored === "dark" || stored === "light") {
-      setThemeMode(stored);
+  function scrollStepErrorIntoView() {
+    window.requestAnimationFrame(() => {
+      stepErrorRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    });
+  }
+
+  function renderPrimaryButtonContent() {
+    if (primaryFeedback === "success") {
+      return <Check aria-label="检查通过" />;
     }
-  }, []);
+    if (primaryFeedback === "failed") {
+      return <X aria-label="检查失败" />;
+    }
+    if (busy) {
+      return <LoaderCircle aria-label="检查中" />;
+    }
+    if (isLastStep && finalCheck === "failed") {
+      return "重新检查";
+    }
+    if (isLastStep) {
+      return "开始使用";
+    }
+    return "下一步";
+  }
 
   useEffect(() => {
-    document.documentElement.dataset.theme = themeMode;
-    window.localStorage.setItem("ema-webui-theme", themeMode);
-  }, [themeMode]);
+    let cancelled = false;
+
+    const redirectIfSetupDone = async () => {
+      try {
+        const status = await getOwnerStatus();
+        if (!cancelled && status.ownerReady) {
+          router.replace("/dashboard");
+        }
+      } catch {
+        // Setup should remain reachable if status cannot be resolved.
+      }
+    };
+
+    void redirectIfSetupDone();
+
+    const handlePageShow = () => {
+      void redirectIfSetupDone();
+    };
+
+    window.addEventListener("pageshow", handlePageShow);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("pageshow", handlePageShow);
+    };
+  }, [router]);
 
   useEffect(() => {
     if (
@@ -376,25 +454,6 @@ export default function SetupPage() {
       setNotice(null);
 
       try {
-        for (const target of ["mongo", "llm", "embedding"] as const) {
-          setFinalCheck(target);
-          const response = await runSetupCheck(
-            target,
-            draft[target],
-            "final",
-            finalAttempt,
-          );
-          if (cancelled) {
-            return;
-          }
-          if (!response.ok) {
-            setFinalFailedStep(target);
-            setFinalFeedback(checkFeedbackFromResponse(response));
-            setFinalCheck("failed");
-            return;
-          }
-        }
-
         setFinalCheck("finalize");
         const result = await runSetupDryRun(draft);
         if (!result.ok) {
@@ -459,6 +518,41 @@ export default function SetupPage() {
     };
   }
 
+  function renderModelSelectField({
+    path,
+    value,
+    options,
+    onChange,
+  }: {
+    path: Extract<SetupFieldPath, "llm.model" | "embedding.model">;
+    value: string;
+    options: string[];
+    onChange: (value: string) => void;
+  }) {
+    const error = getVisibleFieldError(path);
+
+    return (
+      <div className={styles.field}>
+        <span className={styles.fieldLabel}>
+          模型
+          <span className={styles.requiredMarker}>必填</span>
+        </span>
+        <ModelSelect
+          value={value}
+          options={options}
+          error={error}
+          onChange={onChange}
+          onBlur={() => touchField(path)}
+        />
+        {error ? (
+          <span className={styles.fieldError} role="alert">
+            {error}
+          </span>
+        ) : null}
+      </div>
+    );
+  }
+
   function getActionHint() {
     if (busy || isFinalTesting) {
       return "正在检查配置…";
@@ -475,20 +569,15 @@ export default function SetupPage() {
       return "请先完成当前步骤的必填项。";
     }
 
-    if (step.id === "mongo" && mongoTest.status !== "success") {
-      return mongoTest.status === "failed"
-        ? "请处理错误后重新测试连接。"
-        : "请先测试 MongoDB 连接。";
-    }
     if (step.id === "llm" && llmTest.status !== "success") {
       return llmTest.status === "failed"
-        ? "请处理错误后重新测试服务。"
-        : "请先测试 LLM 服务。";
+        ? "请处理错误后重新点击下一步。"
+        : "点击下一步时会检查默认 LLM 服务。";
     }
     if (step.id === "embedding" && embeddingTest.status !== "success") {
       return embeddingTest.status === "failed"
-        ? "请处理错误后重新测试服务。"
-        : "请先测试 Embedding 服务。";
+        ? "请处理错误后重新点击下一步。"
+        : "点击下一步时会检查默认 Embedding 服务。";
     }
     if (
       step.id === "review" &&
@@ -501,11 +590,6 @@ export default function SetupPage() {
     return null;
   }
 
-  const resetMongoTest = () => {
-    mongoTestRun.current += 1;
-    setMongoTest({ status: "idle", feedback: null });
-  };
-
   const resetLlmTest = () => {
     llmTestRun.current += 1;
     setLlmTest({ status: "idle", feedback: null });
@@ -514,17 +598,6 @@ export default function SetupPage() {
   const resetEmbeddingTest = () => {
     embeddingTestRun.current += 1;
     setEmbeddingTest({ status: "idle", feedback: null });
-  };
-
-  const updateMongo = (value: Partial<SetupDraft["mongo"]>) => {
-    setDraft((current) => ({
-      ...current,
-      mongo: { ...current.mongo, ...value },
-    }));
-    setFinalCheck("idle");
-    setFinalFailedStep(null);
-    setFinalFeedback(null);
-    resetMongoTest();
   };
 
   const updateLlm = (value: Partial<SetupDraft["llm"]>) => {
@@ -559,36 +632,6 @@ export default function SetupPage() {
     setFinalFeedback(null);
   };
 
-  const testMongoConnection = async () => {
-    const errors = getStepValidationErrors("mongo", draft);
-    if (errors[0]) {
-      touchStepFields("mongo");
-      setMongoTest({
-        status: "failed",
-        feedback: localFeedback("配置项还不完整", errors[0].error),
-      });
-      return;
-    }
-
-    const runId = ++mongoTestRun.current;
-    setMongoTest({ status: "testing", feedback: null });
-    try {
-      const response = await runSetupCheck("mongo", draft.mongo, "step", runId);
-      if (runId !== mongoTestRun.current) {
-        return;
-      }
-      setMongoTest(testStateFromCheck(response));
-    } catch (error) {
-      if (runId !== mongoTestRun.current) {
-        return;
-      }
-      setMongoTest({
-        status: "failed",
-        feedback: transportFailureFeedback(error),
-      });
-    }
-  };
-
   const testLlmService = async () => {
     if (
       draft.llm.provider === "anthropic" ||
@@ -602,7 +645,7 @@ export default function SetupPage() {
           "UNSUPPORTED",
         ),
       });
-      return;
+      return false;
     }
 
     const errors = getStepValidationErrors("llm", draft);
@@ -612,7 +655,7 @@ export default function SetupPage() {
         status: "failed",
         feedback: localFeedback("配置项还不完整", errors[0].error),
       });
-      return;
+      return false;
     }
 
     const runId = ++llmTestRun.current;
@@ -620,17 +663,19 @@ export default function SetupPage() {
     try {
       const response = await runSetupCheck("llm", draft.llm, "step", runId);
       if (runId !== llmTestRun.current) {
-        return;
+        return false;
       }
       setLlmTest(testStateFromCheck(response));
+      return response.ok;
     } catch (error) {
       if (runId !== llmTestRun.current) {
-        return;
+        return false;
       }
       setLlmTest({
         status: "failed",
         feedback: transportFailureFeedback(error),
       });
+      return false;
     }
   };
 
@@ -642,7 +687,7 @@ export default function SetupPage() {
         status: "failed",
         feedback: localFeedback("配置项还不完整", errors[0].error),
       });
-      return;
+      return false;
     }
 
     const runId = ++embeddingTestRun.current;
@@ -655,17 +700,19 @@ export default function SetupPage() {
         runId,
       );
       if (runId !== embeddingTestRun.current) {
-        return;
+        return false;
       }
       setEmbeddingTest(testStateFromCheck(response));
+      return response.ok;
     } catch (error) {
       if (runId !== embeddingTestRun.current) {
-        return;
+        return false;
       }
       setEmbeddingTest({
         status: "failed",
         feedback: transportFailureFeedback(error),
       });
+      return false;
     }
   };
 
@@ -675,25 +722,43 @@ export default function SetupPage() {
       setNotice(currentStepErrors[0]?.error ?? "请先完成必填项。");
       return;
     }
-    if (step.id === "mongo" && mongoTest.status !== "success") {
-      setNotice("请先测试 MongoDB 连接。");
-      return;
+
+    setPrimaryFeedback(null);
+
+    if (step.id === "llm") {
+      setBusy(true);
+      setNotice(null);
+      const ok = await testLlmService();
+      setBusy(false);
+      if (!ok) {
+        setPrimaryFeedback("failed");
+        scrollStepErrorIntoView();
+        await wait(CHECK_FAILED_HOLD_MS);
+        setPrimaryFeedback(null);
+        return;
+      }
+      setPrimaryFeedback("success");
+      await wait(CHECK_SUCCESS_HOLD_MS);
     }
-    if (step.id === "llm" && llmTest.status !== "success") {
-      setNotice("请先测试 LLM 服务。");
-      return;
-    }
-    if (step.id === "embedding" && embeddingTest.status !== "success") {
-      setNotice("请先测试 Embedding 服务。");
-      return;
+    if (step.id === "embedding") {
+      setBusy(true);
+      setNotice(null);
+      const ok = await testEmbeddingService();
+      setBusy(false);
+      if (!ok) {
+        setPrimaryFeedback("failed");
+        scrollStepErrorIntoView();
+        await wait(CHECK_FAILED_HOLD_MS);
+        setPrimaryFeedback(null);
+        return;
+      }
+      setPrimaryFeedback("success");
+      await wait(CHECK_SUCCESS_HOLD_MS);
     }
 
     if (!isLastStep) {
       setStepMotion("forward");
       setCurrentStep((value) => Math.min(value + 1, setupSteps.length - 1));
-      if (step.id === "mongo") {
-        resetMongoTest();
-      }
       if (step.id === "llm") {
         resetLlmTest();
       }
@@ -703,6 +768,7 @@ export default function SetupPage() {
       setFinalCheck("idle");
       setFinalFailedStep(null);
       setFinalFeedback(null);
+      setPrimaryFeedback(null);
       setNotice(null);
       return;
     }
@@ -710,6 +776,7 @@ export default function SetupPage() {
     if (finalCheck === "failed") {
       setFinalAttempt((value) => value + 1);
       setFinalFeedback(null);
+      setPrimaryFeedback(null);
       setNotice(null);
       return;
     }
@@ -727,7 +794,7 @@ export default function SetupPage() {
           );
           return;
         }
-        router.push("/dashboard");
+        router.replace("/dashboard");
       } catch (error) {
         setFinalCheck("failed");
         setFinalFailedStep("finalize");
@@ -748,9 +815,6 @@ export default function SetupPage() {
 
     setStepMotion("backward");
     setCurrentStep((value) => Math.max(value - 1, 0));
-    if (step.id === "mongo") {
-      resetMongoTest();
-    }
     if (step.id === "llm") {
       resetLlmTest();
     }
@@ -760,6 +824,7 @@ export default function SetupPage() {
     setFinalCheck("idle");
     setFinalFailedStep(null);
     setFinalFeedback(null);
+    setPrimaryFeedback(null);
     setNotice(null);
   };
 
@@ -771,23 +836,7 @@ export default function SetupPage() {
           <span className={styles.eyebrow}>EMA WebUI</span>
           <h1>初始化配置</h1>
         </div>
-        <button
-          type="button"
-          className={styles.themeButton}
-          aria-label={
-            themeMode === "dark" ? "切换到亮色模式" : "切换到暗色模式"
-          }
-          title={themeMode === "dark" ? "切换到亮色模式" : "切换到暗色模式"}
-          onClick={() =>
-            setThemeMode((mode) => (mode === "dark" ? "light" : "dark"))
-          }
-        >
-          {themeMode === "dark" ? (
-            <Sun aria-hidden="true" />
-          ) : (
-            <Moon aria-hidden="true" />
-          )}
-        </button>
+        <span className={styles.versionBadge}>{APP_VERSION_BADGE}</span>
       </header>
 
       <section className={styles.setupFrame}>
@@ -843,7 +892,6 @@ export default function SetupPage() {
               className={styles.textButton}
               onClick={() => {
                 setDraft(initialDraft);
-                resetMongoTest();
                 resetLlmTest();
                 resetEmbeddingTest();
                 setTouchedFields({});
@@ -851,6 +899,7 @@ export default function SetupPage() {
                 setFinalFailedStep(null);
                 setFinalFeedback(null);
                 setFinalAttempt(0);
+                setPrimaryFeedback(null);
                 setStepMotion("backward");
                 setCurrentStep(0);
                 setNotice(null);
@@ -860,7 +909,10 @@ export default function SetupPage() {
               重置
             </button>
             <div className={styles.actionHintSlot} aria-live="polite">
-              {primaryDisabled && displayActionHint ? (
+              {primaryDisabled &&
+              !busy &&
+              primaryFeedback === null &&
+              displayActionHint ? (
                 <span className={styles.actionHint}>{displayActionHint}</span>
               ) : null}
             </div>
@@ -875,18 +927,21 @@ export default function SetupPage() {
               </button>
               <button
                 type="button"
-                className={styles.primaryButton}
+                className={`${styles.primaryButton} ${
+                  primaryFeedback === "success"
+                    ? styles.primaryButtonSuccess
+                    : primaryFeedback === "failed"
+                      ? styles.primaryButtonFailed
+                      : busy
+                        ? styles.primaryButtonLoading
+                        : ""
+                }`}
                 onClick={() => void goNext()}
                 disabled={primaryDisabled}
                 title={displayActionHint ?? undefined}
+                aria-live="polite"
               >
-                {busy
-                  ? "检查中"
-                  : isLastStep && finalCheck === "failed"
-                    ? "重新检查"
-                    : isLastStep
-                      ? "开始使用"
-                      : "下一步"}
+                {renderPrimaryButtonContent()}
               </button>
             </div>
           </footer>
@@ -897,99 +952,6 @@ export default function SetupPage() {
 
   function renderStepContent() {
     switch (step.id) {
-      case "mongo":
-        return (
-          <div className={styles.stack}>
-            <div
-              className={styles.segmentedControl}
-              role="tablist"
-              aria-label="MongoDB 连接模式"
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={draft.mongo.kind === "remote"}
-                className={`${styles.segmentedTab} ${
-                  draft.mongo.kind === "remote" ? styles.segmentedActive : ""
-                }`}
-                onClick={() => updateMongo({ kind: "remote" })}
-              >
-                MongoDB 服务
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={draft.mongo.kind === "memory"}
-                className={`${styles.segmentedTab} ${
-                  draft.mongo.kind === "memory" ? styles.segmentedActive : ""
-                }`}
-                onClick={() => updateMongo({ kind: "memory" })}
-              >
-                内存模式
-              </button>
-            </div>
-            <div className={styles.formGrid}>
-              {draft.mongo.kind === "remote" ? (
-                <Field
-                  label="连接地址"
-                  error={getVisibleFieldError("mongo.uri")}
-                >
-                  <input
-                    value={draft.mongo.uri}
-                    required
-                    aria-required="true"
-                    {...getFieldControlProps("mongo.uri")}
-                    onChange={(event) =>
-                      updateMongo({ uri: event.target.value })
-                    }
-                  />
-                </Field>
-              ) : null}
-              <Field
-                label="数据库名"
-                error={getVisibleFieldError("mongo.dbName")}
-              >
-                <input
-                  value={draft.mongo.dbName}
-                  required
-                  aria-required="true"
-                  {...getFieldControlProps("mongo.dbName")}
-                  onChange={(event) =>
-                    updateMongo({ dbName: event.target.value })
-                  }
-                />
-              </Field>
-            </div>
-            <div className={styles.testRow}>
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={() => void testMongoConnection()}
-                disabled={
-                  mongoTest.status === "testing" ||
-                  getStepValidationErrors("mongo", draft).length > 0
-                }
-                title={
-                  getStepValidationErrors("mongo", draft).length > 0
-                    ? "请先完成 MongoDB 必填项"
-                    : undefined
-                }
-              >
-                测试连接
-              </button>
-              {mongoTest.status !== "idle" ? (
-                <InlineStatus
-                  status={mongoTest.status}
-                  feedback={mongoTest.feedback}
-                  testingText="正在测试 MongoDB…"
-                />
-              ) : null}
-            </div>
-            {mongoTest.status === "failed" ? (
-              <CheckFeedbackDetails feedback={mongoTest.feedback} />
-            ) : null}
-          </div>
-        );
       case "llm": {
         const llmComingSoon =
           draft.llm.provider === "anthropic" ||
@@ -1056,24 +1018,39 @@ export default function SetupPage() {
                 </span>
               </label>
             ) : draft.llm.provider === "openai" ? (
-              <label className={styles.switchRow}>
-                <span>
-                  <strong>使用 Responses API</strong>
-                </span>
-                <input
-                  type="checkbox"
-                  role="switch"
-                  checked={draft.llm.mode === "responses"}
-                  onChange={(event) =>
-                    updateLlm({
-                      mode: event.target.checked ? "responses" : "chat",
-                    })
-                  }
-                />
-                <span className={styles.switchTrack} aria-hidden="true">
-                  <span className={styles.switchThumb} />
-                </span>
-              </label>
+              <div className={styles.setupControlGroup}>
+                <span className={styles.setupControlTitle}>接口协议</span>
+                <div
+                  className={styles.segmentedControl}
+                  role="tablist"
+                  aria-label="OpenAI 接口协议"
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={draft.llm.mode === "chat"}
+                    className={`${styles.segmentedTab} ${
+                      draft.llm.mode === "chat" ? styles.segmentedActive : ""
+                    }`}
+                    onClick={() => updateLlm({ mode: "chat" })}
+                  >
+                    Chat Completions
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={draft.llm.mode === "responses"}
+                    className={`${styles.segmentedTab} ${
+                      draft.llm.mode === "responses"
+                        ? styles.segmentedActive
+                        : ""
+                    }`}
+                    onClick={() => updateLlm({ mode: "responses" })}
+                  >
+                    Responses API
+                  </button>
+                </div>
+              </div>
             ) : null}
             {llmComingSoon ? (
               <div className={styles.comingSoonPanel}>
@@ -1082,20 +1059,12 @@ export default function SetupPage() {
             ) : (
               <>
                 <div className={styles.formGrid}>
-                  <Field
-                    label="模型名称"
-                    error={getVisibleFieldError("llm.model")}
-                  >
-                    <input
-                      value={draft.llm.model}
-                      required
-                      aria-required="true"
-                      {...getFieldControlProps("llm.model")}
-                      onChange={(event) =>
-                        updateLlm({ model: event.target.value })
-                      }
-                    />
-                  </Field>
+                  {renderModelSelectField({
+                    path: "llm.model",
+                    value: draft.llm.model,
+                    options: llmModelOptions[draft.llm.provider],
+                    onChange: (model) => updateLlm({ model }),
+                  })}
                   {draft.llm.provider === "google" && draft.llm.useVertexAi ? (
                     <>
                       <Field
@@ -1104,6 +1073,9 @@ export default function SetupPage() {
                       >
                         <input
                           value={draft.llm.projectEnvKey}
+                          placeholder={
+                            llmDefaults[draft.llm.provider].projectEnvKey
+                          }
                           required
                           aria-required="true"
                           {...getFieldControlProps("llm.projectEnvKey")}
@@ -1118,11 +1090,33 @@ export default function SetupPage() {
                       >
                         <input
                           value={draft.llm.locationEnvKey}
+                          placeholder={
+                            llmDefaults[draft.llm.provider].locationEnvKey
+                          }
                           required
                           aria-required="true"
                           {...getFieldControlProps("llm.locationEnvKey")}
                           onChange={(event) =>
                             updateLlm({ locationEnvKey: event.target.value })
+                          }
+                        />
+                      </Field>
+                      <Field
+                        label="凭据环境变量名"
+                        error={getVisibleFieldError("llm.credentialsEnvKey")}
+                      >
+                        <input
+                          value={draft.llm.credentialsEnvKey}
+                          placeholder={
+                            llmDefaults[draft.llm.provider].credentialsEnvKey
+                          }
+                          required
+                          aria-required="true"
+                          {...getFieldControlProps("llm.credentialsEnvKey")}
+                          onChange={(event) =>
+                            updateLlm({
+                              credentialsEnvKey: event.target.value,
+                            })
                           }
                         />
                       </Field>
@@ -1135,6 +1129,7 @@ export default function SetupPage() {
                       >
                         <input
                           value={draft.llm.baseUrl}
+                          placeholder={llmDefaults[draft.llm.provider].baseUrl}
                           required
                           aria-required="true"
                           {...getFieldControlProps("llm.baseUrl")}
@@ -1150,6 +1145,7 @@ export default function SetupPage() {
                       >
                         <input
                           value={draft.llm.envKey}
+                          placeholder={llmDefaults[draft.llm.provider].envKey}
                           required
                           aria-required="true"
                           {...getFieldControlProps("llm.envKey")}
@@ -1161,35 +1157,10 @@ export default function SetupPage() {
                     </>
                   )}
                 </div>
-                <div className={styles.testRow}>
-                  <button
-                    type="button"
-                    className={styles.secondaryButton}
-                    onClick={() => void testLlmService()}
-                    disabled={
-                      llmTest.status === "testing" ||
-                      getStepValidationErrors("llm", draft).length > 0 ||
-                      !isLLMComplete(draft)
-                    }
-                    title={
-                      getStepValidationErrors("llm", draft).length > 0 ||
-                      !isLLMComplete(draft)
-                        ? "请先完成 LLM 服务必填项"
-                        : undefined
-                    }
-                  >
-                    测试服务
-                  </button>
-                  {llmTest.status !== "idle" ? (
-                    <InlineStatus
-                      status={llmTest.status}
-                      feedback={llmTest.feedback}
-                      testingText="正在测试 LLM 服务…"
-                    />
-                  ) : null}
-                </div>
                 {llmTest.status === "failed" ? (
-                  <CheckFeedbackDetails feedback={llmTest.feedback} />
+                  <div ref={stepErrorRef}>
+                    <CheckFeedbackDetails feedback={llmTest.feedback} />
+                  </div>
                 ) : null}
               </>
             )}
@@ -1250,20 +1221,12 @@ export default function SetupPage() {
               </label>
             ) : null}
             <div className={styles.formGrid}>
-              <Field
-                label="模型名称"
-                error={getVisibleFieldError("embedding.model")}
-              >
-                <input
-                  value={draft.embedding.model}
-                  required
-                  aria-required="true"
-                  {...getFieldControlProps("embedding.model")}
-                  onChange={(event) =>
-                    updateEmbedding({ model: event.target.value })
-                  }
-                />
-              </Field>
+              {renderModelSelectField({
+                path: "embedding.model",
+                value: draft.embedding.model,
+                options: embeddingModelOptions[draft.embedding.provider],
+                onChange: (model) => updateEmbedding({ model }),
+              })}
               {draft.embedding.provider === "google" &&
               draft.embedding.useVertexAi ? (
                 <>
@@ -1273,6 +1236,10 @@ export default function SetupPage() {
                   >
                     <input
                       value={draft.embedding.projectEnvKey}
+                      placeholder={
+                        embeddingDefaults[draft.embedding.provider]
+                          .projectEnvKey
+                      }
                       required
                       aria-required="true"
                       {...getFieldControlProps("embedding.projectEnvKey")}
@@ -1287,11 +1254,39 @@ export default function SetupPage() {
                   >
                     <input
                       value={draft.embedding.locationEnvKey}
+                      placeholder={
+                        embeddingDefaults[draft.embedding.provider]
+                          .locationEnvKey
+                      }
                       required
                       aria-required="true"
                       {...getFieldControlProps("embedding.locationEnvKey")}
                       onChange={(event) =>
                         updateEmbedding({ locationEnvKey: event.target.value })
+                      }
+                    />
+                  </Field>
+                  <Field
+                    label="凭据环境变量名"
+                    error={getVisibleFieldError(
+                      "embedding.credentialsEnvKey",
+                    )}
+                  >
+                    <input
+                      value={draft.embedding.credentialsEnvKey}
+                      placeholder={
+                        embeddingDefaults[draft.embedding.provider]
+                          .credentialsEnvKey
+                      }
+                      required
+                      aria-required="true"
+                      {...getFieldControlProps(
+                        "embedding.credentialsEnvKey",
+                      )}
+                      onChange={(event) =>
+                        updateEmbedding({
+                          credentialsEnvKey: event.target.value,
+                        })
                       }
                     />
                   </Field>
@@ -1304,6 +1299,9 @@ export default function SetupPage() {
                   >
                     <input
                       value={draft.embedding.baseUrl}
+                      placeholder={
+                        embeddingDefaults[draft.embedding.provider].baseUrl
+                      }
                       required
                       aria-required="true"
                       {...getFieldControlProps("embedding.baseUrl")}
@@ -1319,6 +1317,9 @@ export default function SetupPage() {
                   >
                     <input
                       value={draft.embedding.envKey}
+                      placeholder={
+                        embeddingDefaults[draft.embedding.provider].envKey
+                      }
                       required
                       aria-required="true"
                       {...getFieldControlProps("embedding.envKey")}
@@ -1330,35 +1331,10 @@ export default function SetupPage() {
                 </>
               )}
             </div>
-            <div className={styles.testRow}>
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={() => void testEmbeddingService()}
-                disabled={
-                  embeddingTest.status === "testing" ||
-                  getStepValidationErrors("embedding", draft).length > 0 ||
-                  !isEmbeddingComplete(draft)
-                }
-                title={
-                  getStepValidationErrors("embedding", draft).length > 0 ||
-                  !isEmbeddingComplete(draft)
-                    ? "请先完成 Embedding 必填项"
-                    : undefined
-                }
-              >
-                测试服务
-              </button>
-              {embeddingTest.status !== "idle" ? (
-                <InlineStatus
-                  status={embeddingTest.status}
-                  feedback={embeddingTest.feedback}
-                  testingText="正在测试 Embedding 服务…"
-                />
-              ) : null}
-            </div>
             {embeddingTest.status === "failed" ? (
-              <CheckFeedbackDetails feedback={embeddingTest.feedback} />
+              <div ref={stepErrorRef}>
+                <CheckFeedbackDetails feedback={embeddingTest.feedback} />
+              </div>
             ) : null}
           </div>
         );
@@ -1372,18 +1348,6 @@ export default function SetupPage() {
                 aria-required="true"
                 {...getFieldControlProps("owner.name")}
                 onChange={(event) => updateOwner({ name: event.target.value })}
-              />
-            </Field>
-            <Field
-              label="邮箱"
-              optional
-              error={getVisibleFieldError("owner.email")}
-            >
-              <input
-                type="email"
-                value={draft.owner.email}
-                {...getFieldControlProps("owner.email")}
-                onChange={(event) => updateOwner({ email: event.target.value })}
               />
             </Field>
             <Field

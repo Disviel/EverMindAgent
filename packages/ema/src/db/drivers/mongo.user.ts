@@ -2,6 +2,8 @@ import type { UserDB, UserEntity } from "../base";
 import type { Mongo } from "../mongo";
 import { upsertEntity, deleteEntity, omitMongoId } from "../mongo/utils";
 
+type LegacyUserEntity = UserEntity & { email?: string };
+
 /**
  * MongoDB-based implementation of UserDB
  * Stores user data in a MongoDB collection
@@ -30,7 +32,7 @@ export class MongoUserDB implements UserDB {
    */
   async getUser(id: number): Promise<UserEntity | null> {
     const db = this.mongo.getDb();
-    const collection = db.collection<UserEntity>(this.$cn);
+    const collection = db.collection<LegacyUserEntity>(this.$cn);
 
     const user = await collection.findOne({ id });
 
@@ -38,7 +40,8 @@ export class MongoUserDB implements UserDB {
       return null;
     }
 
-    return omitMongoId(user);
+    const { email: _legacyEmail, ...userWithoutEmail } = omitMongoId(user);
+    return userWithoutEmail;
   }
 
   /**
@@ -48,7 +51,12 @@ export class MongoUserDB implements UserDB {
    */
   async upsertUser(entity: UserEntity): Promise<number> {
     entity.updatedAt = Date.now();
-    return upsertEntity(this.mongo, this.$cn, entity);
+    const id = await upsertEntity(this.mongo, this.$cn, entity);
+    await this.mongo
+      .getDb()
+      .collection<LegacyUserEntity>(this.$cn)
+      .updateOne({ id }, { $unset: { email: "" } });
+    return id;
   }
 
   /**
@@ -68,6 +76,6 @@ export class MongoUserDB implements UserDB {
     const db = this.mongo.getDb();
     const collection = db.collection<UserEntity>(this.$cn);
     await collection.createIndex({ id: 1 }, { unique: true });
-    await collection.createIndex({ email: 1 }, { unique: true });
+    await collection.dropIndex("email_1").catch(() => undefined);
   }
 }

@@ -65,6 +65,7 @@ const RuntimeGoogleLLMSchema = z
     useVertexAi: z.boolean(),
     project: z.string(),
     location: z.string(),
+    credentialsFile: z.string().default(""),
   })
   .strict();
 
@@ -92,6 +93,7 @@ const RuntimeGoogleEmbeddingSchema = z
     useVertexAi: z.boolean(),
     project: z.string(),
     location: z.string(),
+    credentialsFile: z.string().default(""),
   })
   .strict();
 

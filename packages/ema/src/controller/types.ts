@@ -6,6 +6,7 @@ import type {
 } from "../db";
 import type {
   ChannelConfig,
+  EmbeddingConfig,
   GlobalConfigRecord,
   LLMConfig,
   WebSearchConfig,
@@ -29,7 +30,7 @@ export interface ActorRuntimeSnapshot {
 
 export interface SetupCommitInput {
   owner: Pick<UserEntity, "name"> &
-    Partial<Pick<UserEntity, "description" | "avatar" | "email">> & {
+    Partial<Pick<UserEntity, "description" | "avatar">> & {
       id?: number;
     };
   globalConfig: GlobalConfigRecord;
@@ -78,7 +79,10 @@ export interface LlmProbeResult {
   ok: boolean;
   unsupported: boolean;
   message: string;
+  diagnostics?: Record<string, string | number | boolean | null>;
 }
+
+export interface EmbeddingProbeResult extends LlmProbeResult {}
 
 export type QQConversationType = "chat" | "group";
 

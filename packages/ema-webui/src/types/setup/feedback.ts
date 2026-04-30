@@ -40,14 +40,15 @@ export const fieldLabels: Record<string, string> = {
   "llm.envKey": "LLM 环境变量名",
   "llm.projectEnvKey": "LLM Vertex AI 项目环境变量名",
   "llm.locationEnvKey": "LLM Vertex AI 区域环境变量名",
+  "llm.credentialsEnvKey": "LLM Vertex AI 凭据环境变量名",
   embedding: "Embedding 服务配置",
   "embedding.model": "Embedding 模型名称",
   "embedding.baseUrl": "Embedding Base URL",
   "embedding.envKey": "Embedding 环境变量名",
   "embedding.projectEnvKey": "Embedding Vertex AI 项目环境变量名",
   "embedding.locationEnvKey": "Embedding Vertex AI 区域环境变量名",
+  "embedding.credentialsEnvKey": "Embedding Vertex AI 凭据环境变量名",
   "owner.name": "名称",
-  "owner.email": "邮箱",
   "owner.qq": "QQ 号",
 };
 

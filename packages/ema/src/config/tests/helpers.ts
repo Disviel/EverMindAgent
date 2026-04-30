@@ -47,7 +47,6 @@ export async function createTestActorFixture(dbService: DBService) {
   await dbService.userDB.upsertUser({
     id: 1,
     name: "alice",
-    email: "alice@example.com",
     description: "",
     avatar: "",
   });

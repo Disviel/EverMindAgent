@@ -254,6 +254,7 @@ const GLOBAL_LLM_CONFIG = {
     useVertexAi: false,
     project: "",
     location: "",
+    credentialsFile: "",
   },
 };
 const activityStatusDescription: Record<ActorRuntimeStatus, string> = {
@@ -476,6 +477,7 @@ function buildGlobalActorLlmConfig(): ActorLlmConfig {
       useVertexAi: GLOBAL_LLM_CONFIG.google.useVertexAi,
       project: GLOBAL_LLM_CONFIG.google.project,
       location: GLOBAL_LLM_CONFIG.google.location,
+      credentialsFile: GLOBAL_LLM_CONFIG.google.credentialsFile,
     },
   };
 }
@@ -507,6 +509,7 @@ function buildActorLlmConfigFromDraft(
       useVertexAi: false,
       project: "",
       location: "",
+      credentialsFile: "",
     },
   };
 }

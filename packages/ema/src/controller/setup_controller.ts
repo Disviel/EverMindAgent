@@ -33,7 +33,6 @@ export class SetupController {
       name: input.owner.name.trim(),
       description: input.owner.description ?? "",
       avatar: input.owner.avatar ?? "",
-      email: input.owner.email ?? "",
       updatedAt: now,
     });
     const loaded = await this.server.reloadGlobalConfig();

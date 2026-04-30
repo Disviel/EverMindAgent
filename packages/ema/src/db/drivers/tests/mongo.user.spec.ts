@@ -23,7 +23,6 @@ describe("MongoUserDB with in-memory MongoDB", () => {
       name: "Test User",
       description: "A test user",
       avatar: "https://example.com/avatar.png",
-      email: "test@example.com",
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -38,7 +37,6 @@ describe("MongoUserDB with in-memory MongoDB", () => {
       name: "Test User",
       description: "A test user",
       avatar: "https://example.com/avatar.png",
-      email: "test@example.com",
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -64,7 +62,6 @@ describe("MongoUserDB with in-memory MongoDB", () => {
       name: "Test User",
       description: "A test user",
       avatar: "https://example.com/avatar.png",
-      email: "test@example.com",
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -87,7 +84,6 @@ describe("MongoUserDB with in-memory MongoDB", () => {
       name: "Test User",
       description: "A test user",
       avatar: "https://example.com/avatar.png",
-      email: "test@example.com",
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -112,7 +108,6 @@ describe("MongoUserDB with in-memory MongoDB", () => {
       name: "Test User",
       description: "A test user",
       avatar: "https://example.com/avatar.png",
-      email: "test@example.com",
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };

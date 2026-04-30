@@ -5,6 +5,14 @@ loadEnvConfig(`${process.cwd()}/../../`);
 
 const nextConfig: NextConfig = {
   transpilePackages: ["ema"],
+  serverExternalPackages: [
+    "@lancedb/lancedb",
+    "mongodb",
+    "mongodb-agenda",
+    "pino",
+    "pino-pretty",
+    "thread-stream",
+  ],
 };
 
 export default nextConfig;

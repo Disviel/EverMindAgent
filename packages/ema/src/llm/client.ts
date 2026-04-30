@@ -17,19 +17,31 @@ export enum LLMProvider {
 export class LLMClient {
   private readonly client: LLMClientBase;
 
-  constructor(readonly config: LLMConfig) {
+  constructor(
+    readonly config: LLMConfig,
+    private readonly retryConfig = new RetryConfig(),
+  ) {
     switch (this.config.provider) {
       case LLMProvider.GOOGLE:
         if (!this.config.google.useVertexAi && !this.config.google.apiKey) {
           throw new Error("Google API key is required.");
         }
-        this.client = new GoogleClient(this.config.google, new RetryConfig());
+        if (
+          this.config.google.useVertexAi &&
+          (!this.config.google.project ||
+            !this.config.google.location)
+        ) {
+          throw new Error(
+            "Google Vertex AI project and location are required.",
+          );
+        }
+        this.client = new GoogleClient(this.config.google, this.retryConfig);
         break;
       case LLMProvider.OPENAI:
         if (!this.config.openai.apiKey) {
           throw new Error("OpenAI API key is required.");
         }
-        this.client = new OpenAIClient(this.config.openai, new RetryConfig());
+        this.client = new OpenAIClient(this.config.openai, this.retryConfig);
         break;
       default:
         throw new Error(`Unsupported LLM provider: ${this.config.provider}`);
