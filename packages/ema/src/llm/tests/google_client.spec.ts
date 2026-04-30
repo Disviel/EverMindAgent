@@ -6,7 +6,11 @@ import {
   GoogleClient,
   VERTEX_AI_API_VERSION,
 } from "../google_client";
-import { DEFAULT_GOOGLE_BASE_URL, GlobalConfig } from "../../config";
+import {
+  createBootstrapConfig,
+  DEFAULT_GOOGLE_BASE_URL,
+  GlobalConfig,
+} from "../../config";
 import { MemFs } from "../../shared/fs";
 import { RetryConfig } from "../retry";
 
@@ -91,8 +95,9 @@ describe("GenAI", () => {
 
   test("configures Google AI client with the Gemini API beta version", async () => {
     const fs = new MemFs();
-    await fs.write(GlobalConfig.configPath, GlobalConfig.example);
-    await GlobalConfig.load(fs);
+    await GlobalConfig.load(fs, {
+      bootstrap: createBootstrapConfig({ mode: "dev", mongoKind: "memory" }),
+    });
 
     const client = new GoogleClient(
       {

@@ -1,4 +1,4 @@
-import { GlobalConfig } from "./config/index";
+import { GlobalConfig, type BootstrapConfig } from "./config/index";
 import { DBService } from "./db";
 import type { Fs } from "./shared/fs";
 import { RealFs } from "./shared/fs";
@@ -7,15 +7,19 @@ import { ActorScheduler, AgendaScheduler } from "./scheduler";
 import { createJobHandlers } from "./scheduler/jobs";
 import { MemoryManager } from "./memory/manager";
 import { Gateway } from "./gateway";
-import { buildSession } from "./channel";
 import { Logger } from "./shared/logger";
+
+export interface ServerCreateOptions {
+  readonly bootstrap?: BootstrapConfig;
+  readonly start?: boolean;
+}
 
 /**
  * Top-level server container that wires and starts the core runtime services.
  */
 export class Server {
   /**
-   * Filesystem abstraction used for startup config, seed, and snapshot files.
+   * Filesystem abstraction used for startup config and snapshot files.
    */
   private fs!: Fs;
 
@@ -50,6 +54,8 @@ export class Server {
    */
   logger!: Logger;
 
+  private runtimeStarted = false;
+
   /**
    * Creates an uninitialized server container.
    *
@@ -60,17 +66,18 @@ export class Server {
   private constructor() {}
 
   /**
-   * Creates and starts a fully initialized server instance.
+   * Creates a server container, initializes storage, and starts runtime by
+   * default for backwards compatibility.
    *
-   * This method restores optional development snapshots, creates indices,
-   * constructs runtime services, restores actor runtimes, starts the scheduler,
-   * and finally triggers actor boot initialization.
-   *
-   * @param fs - Filesystem abstraction used for snapshot loading.
-   * @returns Fully initialized server instance ready to serve requests.
+   * @param fs - Filesystem abstraction used for snapshot files.
+   * @param options - Optional bootstrap and lifecycle controls.
+   * @returns Server instance with storage initialized.
    */
-  static async create(fs: Fs = new RealFs()): Promise<Server> {
-    await GlobalConfig.load(fs);
+  static async create(
+    fs: Fs = new RealFs(),
+    options: ServerCreateOptions = {},
+  ): Promise<Server> {
+    await GlobalConfig.load(fs, { bootstrap: options.bootstrap });
 
     const server = new Server();
     server.fs = fs;
@@ -85,50 +92,117 @@ export class Server {
       ],
     });
     server.logger.info("Server starting");
-    server.dbService = await DBService.create(fs);
-    server.logger.info("Database service initialized", {
-      mongo: GlobalConfig.mongo,
-      dataRoot: GlobalConfig.system.dataRoot,
-    });
 
-    let restored = false;
-    if (
-      GlobalConfig.system.mode === "dev" &&
-      GlobalConfig.system.dev.restoreDefaultSnapshot
-    ) {
-      restored = await server.dbService.restoreFromSnapshot("default");
-      if (!restored) {
-        server.logger.warn("Failed to restore snapshot", { name: "default" });
-      } else {
-        server.logger.info("Snapshot restored", { name: "default" });
-      }
-    }
-
+    await server.initializeStorage();
+    await server.restoreDevelopmentDataIfNeeded();
     await server.dbService.createIndices();
     server.logger.info("Database indices created");
 
-    server.gateway = new Gateway(server);
-    server.actorRegistry = new ActorRegistry(server);
-    server.memoryManager = new MemoryManager(server);
-    server.scheduler = await AgendaScheduler.create(server.dbService.mongo);
-    server.logger.info("Scheduler initialized");
+    const hasGlobalConfig = await server.loadGlobalConfig();
 
-    if (
-      GlobalConfig.system.mode === "dev" &&
-      GlobalConfig.system.dev.requireDevSeed &&
-      !restored
-    ) {
-      await server.createInitialCharacters();
+    if ((options.start ?? true) && hasGlobalConfig) {
+      await server.start();
+    } else if (options.start ?? true) {
+      server.logger.warn(
+        "Global config missing, runtime not started until setup completes",
+      );
     }
-    await server.actorRegistry.restoreAll();
-    server.logger.info("Actors restored");
-
-    await server.scheduler.start(createJobHandlers(server));
-    server.logger.info("Scheduler started");
-    server.actorRegistry.startBootInitAll();
-    server.logger.info("Server ready");
 
     return server;
+  }
+
+  /** Connects database resources and prepares the storage service. */
+  async initializeStorage(): Promise<void> {
+    if (this.dbService) {
+      return;
+    }
+    this.dbService = await DBService.create(this.fs);
+    this.logger.info("Database service initialized", {
+      mongo: GlobalConfig.mongo,
+      dataRoot: GlobalConfig.system.dataRoot,
+    });
+  }
+
+  /**
+   * Restores the default development snapshot when using dev memory Mongo.
+   *
+   * @returns true when a snapshot was restored.
+   */
+  async restoreDevelopmentDataIfNeeded(): Promise<boolean> {
+    if (!GlobalConfig.bootstrapConfig.devBootstrap.restoreDefaultSnapshot) {
+      return false;
+    }
+    const restored = await this.dbService.restoreFromSnapshot("default");
+    if (!restored) {
+      this.logger.warn("Failed to restore snapshot", { name: "default" });
+      return false;
+    }
+    this.logger.info("Snapshot restored", { name: "default" });
+    return true;
+  }
+
+  /** Returns whether owner and database-backed global config both exist. */
+  async hasRequiredSetup(): Promise<boolean> {
+    const [owner, globalConfig] = await Promise.all([
+      this.dbService.getDefaultUser(),
+      this.dbService.globalConfigDB.getGlobalConfig(),
+    ]);
+    return Boolean(owner && globalConfig);
+  }
+
+  /**
+   * Loads database-backed GlobalConfig into the process singleton.
+   *
+   * @returns true when a database record was found.
+   */
+  async loadGlobalConfig(): Promise<boolean> {
+    const record = await this.dbService.globalConfigDB.getGlobalConfig();
+    if (record) {
+      GlobalConfig.applyRecord(record);
+      this.logger.info("Global config loaded from database");
+      return true;
+    }
+    this.logger.warn("Global config missing");
+    return false;
+  }
+
+  /** Reloads database-backed GlobalConfig after setup or settings updates. */
+  async reloadGlobalConfig(): Promise<boolean> {
+    return await this.loadGlobalConfig();
+  }
+
+  /** Starts the actor runtime services. */
+  async start(): Promise<void> {
+    if (this.runtimeStarted) {
+      return;
+    }
+    await this.dbService.createIndices();
+    this.gateway = new Gateway(this);
+    this.actorRegistry = new ActorRegistry(this);
+    this.memoryManager = new MemoryManager(this);
+    this.scheduler = await AgendaScheduler.create(this.dbService.mongo);
+    this.logger.info("Scheduler initialized");
+
+    await this.actorRegistry.restoreAll();
+    this.logger.info("Actors restored");
+
+    await this.scheduler.start(createJobHandlers(this));
+    this.logger.info("Scheduler started");
+    this.actorRegistry.startBootInitAll();
+    this.runtimeStarted = true;
+    this.logger.info("Server ready");
+  }
+
+  /** Stops runtime and database resources owned by this server. */
+  async stop(): Promise<void> {
+    if (this.scheduler) {
+      await this.scheduler.stop();
+    }
+    if (this.dbService) {
+      await this.dbService.mongo.close();
+      await this.dbService.lancedb.close();
+    }
+    this.runtimeStarted = false;
   }
 
   /**
@@ -143,73 +217,5 @@ export class Server {
    */
   getActorScheduler(actorId: number): ActorScheduler {
     return new ActorScheduler(this.scheduler, actorId);
-  }
-
-  /**
-   * Ensures the current development bootstrap dataset exists.
-   *
-   * This method is intentionally idempotent. It reads config/dev.seed.json and
-   * applies the declared users, roles, actors, ownership relations, identity
-   * bindings, and conversations to the database.
-   *
-   * The method only touches persistent data. Runtime actor restoration,
-   * channel startup, scheduler startup, and boot initialization are handled by
-   * the caller after bootstrap data has been ensured.
-   *
-   * @returns Promise that resolves after the default bootstrap data is ready.
-   */
-  private async createInitialCharacters(): Promise<void> {
-    let seed;
-    try {
-      seed = await GlobalConfig.loadDevSeed(this.fs);
-    } catch (error) {
-      this.logger?.warn("Failed to load development seed", {
-        path: GlobalConfig.devSeedPath,
-        error,
-      });
-      return;
-    }
-    if (!seed) {
-      this.logger?.warn("Development seed not found, skipped bootstrap", {
-        path: GlobalConfig.devSeedPath,
-      });
-      return;
-    }
-    this.logger?.info("Development seed loaded", {
-      path: GlobalConfig.devSeedPath,
-    });
-
-    for (const user of seed.users) {
-      await this.dbService.userDB.upsertUser({ ...user });
-    }
-    for (const role of seed.roles) {
-      await this.dbService.roleDB.upsertRole({ ...role });
-    }
-    for (const actor of seed.actors) {
-      await this.dbService.actorDB.upsertActor({ ...actor });
-    }
-    for (const relation of seed.userOwnActors) {
-      await this.dbService.userOwnActorDB.addActorToUser({ ...relation });
-    }
-    for (const binding of seed.identityBindings) {
-      await this.dbService.externalIdentityBindingDB.upsertExternalIdentityBinding(
-        { ...binding },
-      );
-    }
-    for (const conversation of seed.conversations) {
-      await this.dbService.createConversation(
-        conversation.actorId,
-        buildSession(conversation.channel, conversation.type, conversation.uid),
-        conversation.name,
-        conversation.description,
-        conversation.allowProactive,
-      );
-    }
-    this.logger?.info("Development seed applied", {
-      users: seed.users.length,
-      roles: seed.roles.length,
-      actors: seed.actors.length,
-      conversations: seed.conversations.length,
-    });
   }
 }

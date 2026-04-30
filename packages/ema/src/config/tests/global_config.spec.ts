@@ -2,119 +2,134 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import path from "node:path";
 
 import { MemFs } from "../../shared/fs";
-import { GlobalConfig, GlobalConfigError } from "../global_config";
-
-async function loadExample(fs = new MemFs()): Promise<MemFs> {
-  GlobalConfig.resetForTests();
-  await fs.write(GlobalConfig.configPath, GlobalConfig.example);
-  await GlobalConfig.load(fs);
-  return fs;
-}
+import {
+  createBootstrapConfig,
+  getWorkspaceRoot,
+  GlobalConfig,
+  GlobalConfigError,
+} from "../global_config";
+import {
+  createTestGlobalConfigRecord,
+} from "./helpers";
 
 describe("GlobalConfig", () => {
+  const emptyEnv = () => undefined;
+
   afterEach(() => {
     vi.unstubAllEnvs();
     GlobalConfig.resetForTests();
   });
 
-  test("creates example config and throws when config is missing", async () => {
-    const fs = new MemFs();
-    const result = GlobalConfig.load(fs);
+  test("creates dev memory bootstrap with fixed data root paths", () => {
+    const bootstrap = createBootstrapConfig(
+      {
+        mode: "dev",
+        mongoKind: "memory",
+        dataRoot: ".ema-test",
+      },
+      emptyEnv,
+    );
 
-    await expect(result).rejects.toBeInstanceOf(GlobalConfigError);
-    await expect(result).rejects.toThrow("EMA config not found");
-    await expect(fs.exists(GlobalConfig.configPath)).resolves.toBe(true);
-    await expect(fs.read(GlobalConfig.configPath)).resolves.toBe(
-      GlobalConfig.example,
+    const dataRoot = path.join(getWorkspaceRoot(), ".ema-test");
+    expect(bootstrap.mode).toBe("dev");
+    expect(bootstrap.mongo).toMatchObject({
+      kind: "memory",
+      dbName: "ema",
+    });
+    expect(bootstrap.paths).toEqual({
+      dataRoot,
+      logsDir: path.join(dataRoot, "logs"),
+      workspaceDir: path.join(dataRoot, "workspace"),
+    });
+    expect(bootstrap.devBootstrap).toEqual({
+      restoreDefaultSnapshot: true,
+    });
+  });
+
+  test("defaults to production mode and requires mongo", () => {
+    expect(() => createBootstrapConfig({}, emptyEnv)).toThrow(
+      GlobalConfigError,
     );
   });
 
-  test("loads default values and resolves env_key values", async () => {
-    vi.stubEnv("GEMINI_API_KEY", "test-gemini-key");
-    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+  test("requires remote mongo in production bootstrap", () => {
+    expect(() => createBootstrapConfig({ mode: "prod" }, emptyEnv)).toThrow(
+      GlobalConfigError,
+    );
+
+    const bootstrap = createBootstrapConfig(
+      {
+        mode: "prod",
+        mongoUri: "mongodb://127.0.0.1:27017",
+      },
+      emptyEnv,
+    );
+    expect(bootstrap.mongo).toEqual({
+      kind: "remote",
+      uri: "mongodb://127.0.0.1:27017",
+      dbName: "ema",
+    });
+    expect(bootstrap.devBootstrap).toEqual({
+      restoreDefaultSnapshot: false,
+    });
+  });
+
+  test("loads bootstrap without implicitly creating runtime config", async () => {
     vi.stubEnv("HTTPS_PROXY", "http://127.0.0.1:7890");
 
-    await loadExample();
+    const bootstrap = createBootstrapConfig({
+      mode: "dev",
+      mongoKind: "memory",
+    });
+    await GlobalConfig.load(new MemFs(), { bootstrap });
 
     expect(GlobalConfig.system.mode).toBe("dev");
-    expect(GlobalConfig.system.dataRoot).toBe(
-      path.join(path.dirname(GlobalConfig.configPath), "..", ".data"),
-    );
-    expect(GlobalConfig.system.logsDir).toBe(
-      path.join(path.dirname(GlobalConfig.configPath), "..", "logs"),
-    );
+    expect(GlobalConfig.system.dataRoot).toBe(bootstrap.paths.dataRoot);
+    expect(GlobalConfig.system.logsDir).toBe(bootstrap.paths.logsDir);
     expect(GlobalConfig.system.httpsProxy).toBe("http://127.0.0.1:7890");
     expect(GlobalConfig.mongo.kind).toBe("memory");
-    expect(GlobalConfig.agent.workspaceDir).toBe(
-      path.join(path.dirname(GlobalConfig.configPath), "..", "workspace"),
+    expect(GlobalConfig.agent.workspaceDir).toBe(bootstrap.paths.workspaceDir);
+    expect(GlobalConfig.hasRuntimeConfig).toBe(false);
+    expect(() => GlobalConfig.defaultLlm).toThrow(
+      "Database-backed GlobalConfig has not been loaded",
     );
-    expect(GlobalConfig.defaultLlm.provider).toBe("google");
-    expect(GlobalConfig.defaultLlm.google.model).toBe("gemini-3.1-pro-preview");
-    expect(GlobalConfig.defaultLlm.google.apiKey).toBe("test-gemini-key");
-    expect(GlobalConfig.defaultLlm.openai.apiKey).toBe("test-openai-key");
   });
 
-  test("loads .env values when process env is empty", async () => {
-    vi.stubEnv("GEMINI_API_KEY", "");
+  test("loads .env proxy values for bootstrap-time system config", async () => {
+    vi.stubEnv("HTTPS_PROXY", "");
     const fs = new MemFs();
-    await fs.write(GlobalConfig.configPath, GlobalConfig.example);
     await fs.write(
-      GlobalConfig.configPath.replace(/config\/config\.toml$/, ".env"),
-      "GEMINI_API_KEY=env-file-key\n",
+      path.join(getWorkspaceRoot(), ".env"),
+      "HTTPS_PROXY=http://127.0.0.1:7890\n",
     );
 
-    await GlobalConfig.load(fs);
+    await GlobalConfig.load(fs, {
+      bootstrap: createBootstrapConfig({ mode: "dev", mongoKind: "memory" }),
+    });
 
-    expect(GlobalConfig.defaultLlm.google.apiKey).toBe("env-file-key");
+    expect(GlobalConfig.system.httpsProxy).toBe("http://127.0.0.1:7890");
   });
 
-  test("loads dev seed JSON", async () => {
-    const fs = new MemFs();
-    await fs.write(GlobalConfig.configPath, GlobalConfig.example);
-    await fs.write(GlobalConfig.devSeedPath, GlobalConfig.devSeedExample);
+  test("applies database-backed global config record", async () => {
+    await GlobalConfig.load(new MemFs(), {
+      bootstrap: createBootstrapConfig({ mode: "dev", mongoKind: "memory" }),
+    });
 
-    await GlobalConfig.load(fs);
-    const seed = await GlobalConfig.loadDevSeed(fs);
-
-    expect(seed).not.toBeNull();
-    expect(seed?.users[0]?.name).toBe("alice");
-    expect(seed?.actors[0]?.roleId).toBe(1);
-  });
-
-  test("rejects invalid actor config in dev seed JSON", async () => {
-    const fs = new MemFs();
-    const seed = JSON.parse(GlobalConfig.devSeedExample);
-    seed.actors[0].channelConfig = {
-      qq: {
-        enabled: true,
+    GlobalConfig.applyRecord({
+      ...createTestGlobalConfigRecord(),
+      system: {
+        httpsProxy: "http://127.0.0.1:7890",
       },
-    };
-    await fs.write(GlobalConfig.configPath, GlobalConfig.example);
-    await fs.write(GlobalConfig.devSeedPath, JSON.stringify(seed));
+      defaultLlm: {
+        ...createTestGlobalConfigRecord().defaultLlm,
+        google: {
+          ...createTestGlobalConfigRecord().defaultLlm.google,
+          apiKey: "db-gemini-key",
+        },
+      },
+    });
 
-    await GlobalConfig.load(fs);
-
-    await expect(GlobalConfig.loadDevSeed(fs)).rejects.toThrow(
-      "Invalid EMA dev seed",
-    );
-  });
-
-  test("reports TOML parse errors with config path", async () => {
-    const fs = new MemFs();
-    await fs.write(GlobalConfig.configPath, "[system\nmode = 'dev'");
-
-    await expect(GlobalConfig.load(fs)).rejects.toThrow(
-      "Failed to parse EMA config",
-    );
-  });
-
-  test("reports validation errors with config path", async () => {
-    const fs = new MemFs();
-    await fs.write(
-      GlobalConfig.configPath,
-      GlobalConfig.example.replace('provider = "google"', 'provider = "bad"'),
-    );
-
-    await expect(GlobalConfig.load(fs)).rejects.toThrow("Invalid EMA config");
+    expect(GlobalConfig.system.httpsProxy).toBe("http://127.0.0.1:7890");
+    expect(GlobalConfig.defaultLlm.google.apiKey).toBe("db-gemini-key");
   });
 });

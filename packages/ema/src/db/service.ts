@@ -4,8 +4,6 @@ import { BSON } from "mongodb";
 
 import {
   cloneConfig,
-  DEFAULT_CHANNEL_CONFIG,
-  DEFAULT_WEB_SEARCH_CONFIG,
   GlobalConfig,
   type ChannelConfig,
   type LLMConfig,
@@ -17,6 +15,7 @@ import type {
   ConversationDB,
   ConversationMessageDB,
   ExternalIdentityBindingDB,
+  GlobalConfigDB,
   LongTermMemoryDB,
   PersonalityDB,
   RoleDB,
@@ -33,6 +32,7 @@ import {
   MongoConversationDB,
   MongoConversationMessageDB,
   MongoExternalIdentityBindingDB,
+  MongoGlobalConfigDB,
   MongoLongTermMemoryDB,
   MongoPersonalityDB,
   MongoRoleDB,
@@ -47,6 +47,10 @@ const DEFAULT_WEB_USER_ID = 1;
  * Centralized database service aggregating all repositories and DB-related helpers.
  */
 export class DBService {
+  readonly globalConfigDB: GlobalConfigDB & {
+    collections: string[];
+    createIndices(): Promise<void>;
+  };
   readonly roleDB: RoleDB & { collections: string[] };
   readonly personalityDB: PersonalityDB & {
     collections: string[];
@@ -118,6 +122,7 @@ export class DBService {
     readonly mongo: Mongo,
     readonly lancedb: lancedb.Connection,
   ) {
+    this.globalConfigDB = new MongoGlobalConfigDB(mongo);
     this.roleDB = new MongoRoleDB(mongo);
     this.personalityDB = new MongoPersonalityDB(mongo);
     this.actorDB = new MongoActorDB(mongo);
@@ -141,6 +146,7 @@ export class DBService {
    */
   async createIndices(): Promise<void> {
     await Promise.all([
+      this.globalConfigDB.createIndices(),
       this.personalityDB.createIndices(),
       this.actorDB.createIndices(),
       this.userDB.createIndices(),
@@ -164,6 +170,7 @@ export class DBService {
     const fileName = this.snapshotPath(name);
     const collections = new Set<string>([
       ...utilCollections.collections,
+      ...this.globalConfigDB.collections,
       ...this.roleDB.collections,
       ...this.personalityDB.collections,
       ...this.actorDB.collections,
@@ -304,7 +311,7 @@ export class DBService {
     if (!actor) {
       throw new Error(`Actor ${actorId} not found.`);
     }
-    return cloneConfig(actor.webSearchConfig ?? DEFAULT_WEB_SEARCH_CONFIG);
+    return cloneConfig(actor.webSearchConfig ?? GlobalConfig.defaultWebSearch);
   }
 
   /**
@@ -317,7 +324,7 @@ export class DBService {
     if (!actor) {
       throw new Error(`Actor ${actorId} not found.`);
     }
-    return cloneConfig(actor.channelConfig ?? DEFAULT_CHANNEL_CONFIG);
+    return cloneConfig(actor.channelConfig ?? GlobalConfig.defaultChannel);
   }
 
   private snapshotPath(name: string): string {

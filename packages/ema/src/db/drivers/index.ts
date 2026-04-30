@@ -3,6 +3,7 @@ export * from "./mongo.role";
 export * from "./mongo.personality";
 export * from "./mongo.actor";
 export * from "./mongo.user";
+export * from "./mongo.global_config";
 export * from "./mongo.user_own_actor";
 export * from "./mongo.external_identity_binding";
 export * from "./mongo.conversation";

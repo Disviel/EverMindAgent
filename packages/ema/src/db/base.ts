@@ -2,6 +2,7 @@ import type { InputContent } from "../shared/schema";
 import type { MessageReplyRef } from "../channel";
 import type {
   ChannelConfig,
+  GlobalConfigRecord,
   LLMConfig,
   WebSearchConfig,
 } from "../config/index";
@@ -59,6 +60,24 @@ export interface IndexableDB {
    * @returns Promise resolving when indices are created.
    */
   createIndices(): Promise<void>;
+}
+
+/** Database-backed singleton global configuration entity. */
+export type GlobalConfigEntity = GlobalConfigRecord;
+
+/** Interface for global configuration persistence. */
+export interface GlobalConfigDB {
+  /**
+   * Gets the singleton global configuration.
+   * @returns Promise resolving to the config or null when setup is incomplete.
+   */
+  getGlobalConfig(): Promise<GlobalConfigEntity | null>;
+
+  /**
+   * Inserts or updates the singleton global configuration.
+   * @param entity - Complete global configuration to persist.
+   */
+  upsertGlobalConfig(entity: GlobalConfigEntity): Promise<void>;
 }
 
 /**

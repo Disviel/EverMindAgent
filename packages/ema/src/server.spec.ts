@@ -10,8 +10,11 @@ import { AgendaScheduler } from "./scheduler";
 import { MemoryManager } from "./memory/manager";
 import { Gateway } from "./gateway";
 import { ActorRegistry } from "./actor";
-import { loadTestGlobalConfig } from "./config/tests/helpers";
-import { GlobalConfig } from "./config/index";
+import {
+  createTestActorFixture,
+  loadTestGlobalConfig,
+} from "./config/tests/helpers";
+import { createBootstrapConfig, GlobalConfig } from "./config/index";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -35,77 +38,6 @@ describe("Server", () => {
     GlobalConfig.resetForTests();
   });
 
-  test("should initialize default user, bindings, and conversations", async () => {
-    const fs = new MemFs();
-    const mongo = await createMongo("", "test_login", "memory");
-    await mongo.connect();
-    const lance = await lancedb.connect("memory://ema-login");
-    const server = await createServerForTest(fs, mongo, lance);
-
-    try {
-      await (server as any).createInitialCharacters();
-      const user = await server.dbService.getDefaultUser();
-      expect(user).not.toBeNull();
-      expect(user!.id).toBe(1);
-      expect(user!.name).toBe("alice");
-      expect(user!.email).toBe("alice@example.com");
-      const userBinding =
-        await server.dbService.externalIdentityBindingDB.getExternalIdentityBindingByUid(
-          "1",
-        );
-      expect(userBinding).toMatchObject({
-        userId: 1,
-        channel: "web",
-        uid: "1",
-      });
-    } finally {
-      await mongo.close();
-      await lance.close();
-    }
-  });
-
-  test("initial character setup should not create default scheduler jobs", async () => {
-    const fs = new MemFs();
-    const mongo = await createMongo("", "test_login_jobs", "memory");
-    await mongo.connect();
-    const lance = await lancedb.connect("memory://ema-login-jobs");
-    const server = await createServerForTest(fs, mongo, lance);
-    server.scheduler = await AgendaScheduler.create(mongo, {
-      processEvery: 20,
-    });
-
-    try {
-      await (server as any).createInitialCharacters();
-      await (server as any).createInitialCharacters();
-
-      const conversation =
-        await server.dbService.conversationDB.getConversationByActorAndSession(
-          1,
-          "web-chat-1",
-        );
-      expect(conversation).toMatchObject({
-        actorId: 1,
-        session: "web-chat-1",
-        description: "这是你和你的拥有者之间在网页端私聊的对话。",
-      });
-
-      const backgroundJobs = await server.scheduler.listJobs({
-        name: "actor_background",
-        "data.actorId": 1,
-      });
-      const foregroundJobs = await server.scheduler.listJobs({
-        name: "actor_foreground",
-        "data.actorId": 1,
-      });
-      expect(backgroundJobs).toHaveLength(0);
-      expect(foregroundJobs).toHaveLength(0);
-    } finally {
-      await server.scheduler.stop();
-      await mongo.close();
-      await lance.close();
-    }
-  });
-
   test("system prompt should include actor schedules", async () => {
     const fs = new MemFs();
     const mongo = await createMongo("", "test_prompt_schedule", "memory");
@@ -116,12 +48,7 @@ describe("Server", () => {
       processEvery: 20,
     });
     try {
-      await (server as any).createInitialCharacters();
-      const conversation =
-        await server.dbService.conversationDB.getConversationByActorAndSession(
-          1,
-          "web-chat-1",
-        );
+      const conversation = await createTestActorFixture(server.dbService);
       expect(conversation?.id).toBeTypeOf("number");
 
       await server.getActorScheduler(1).add([
@@ -152,25 +79,20 @@ describe("Server", () => {
     }
   });
 
-  test("does not restore default snapshot when disabled by config", async () => {
+  test("does not restore default snapshot when disabled by bootstrap", async () => {
     const fs = new MemFs();
+    const baseBootstrap = createBootstrapConfig({
+      mode: "dev",
+      mongoKind: "memory",
+    });
+    const bootstrap = {
+      ...baseBootstrap,
+      devBootstrap: {
+        restoreDefaultSnapshot: false,
+      },
+    };
     await fs.write(
-      GlobalConfig.configPath,
-      GlobalConfig.example
-        .replace(
-          "restore_default_snapshot = true",
-          "restore_default_snapshot = false",
-        )
-        .replace("require_dev_seed = true", "require_dev_seed = false"),
-    );
-    await fs.write(
-      path.join(
-        path.dirname(GlobalConfig.configPath),
-        "..",
-        ".data",
-        "mongo-snapshots",
-        "default.json",
-      ),
+      path.join(bootstrap.paths.dataRoot, "mongo-snapshots", "default.json"),
       JSON.stringify({
         roles: [
           {
@@ -182,15 +104,13 @@ describe("Server", () => {
       }),
     );
 
-    const server = await Server.create(fs);
+    const server = await Server.create(fs, { bootstrap });
 
     try {
       await expect(server.dbService.roleDB.getRole(123)).resolves.toBeNull();
     } finally {
-      await server.scheduler.stop();
       await sleep(50);
-      await server.dbService.mongo.close();
-      await server.dbService.lancedb.close();
+      await server.stop();
     }
   });
 });

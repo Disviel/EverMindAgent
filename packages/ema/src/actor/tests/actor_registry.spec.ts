@@ -5,7 +5,10 @@ import { ActorRegistry } from "../actor_registry";
 import { MemFs } from "../../shared/fs";
 import { Gateway } from "../../gateway";
 import { MemoryManager } from "../../memory/manager";
-import { loadTestGlobalConfig } from "../../config/tests/helpers";
+import {
+  createTestActorFixture,
+  loadTestGlobalConfig,
+} from "../../config/tests/helpers";
 import { createMongo, DBService, type Mongo } from "../../db";
 import { Server } from "../../server";
 
@@ -38,7 +41,7 @@ describe("ActorRegistry", () => {
         "Actor 1 not found.",
       );
 
-      await (server as any).createInitialCharacters();
+      await createTestActorFixture(server.dbService);
 
       expect(server.actorRegistry.get(1)).toBeNull();
 

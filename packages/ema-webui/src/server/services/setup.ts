@@ -337,7 +337,7 @@ export async function buildSetupStatus(): Promise<SetupStatusResponse> {
     reason: owner ? null : "CONFIG_MISSING",
     setupState: {
       status: owner ? "complete" : "required",
-      configPath: "config/config.toml",
+      configPath: "database:global_config",
       detectedConfig: Boolean(owner),
     },
     recommendedSteps: setupSteps,
@@ -387,12 +387,12 @@ export function buildDryRunResponse(draft: SetupDraft): SetupDryRunResponse {
       issues,
     },
     plan: {
-      configPath: "config/config.toml",
+      configPath: "database:global_config",
       envKeys,
       operations: [
         {
           id: "write-config",
-          title: "写入 config.toml",
+          title: "写入全局配置",
           status: issues.length === 0 ? "ready" : "blocked",
         },
         {
@@ -401,7 +401,7 @@ export function buildDryRunResponse(draft: SetupDraft): SetupDryRunResponse {
           status: isMongoConfigComplete(draft.mongo) ? "ready" : "blocked",
         },
         {
-          id: "seed-owner",
+          id: "initialize-owner",
           title: "初始化个人信息",
           status: draft.owner.name.trim() ? "ready" : "blocked",
         },

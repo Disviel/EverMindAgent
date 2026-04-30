@@ -40,6 +40,8 @@ env/
 
 # Runtime directories
 /.data/
+/.ema/
+/.codex/
 /workspace/
 /logs/
 
