@@ -1,0 +1,116 @@
+import "server-only";
+
+import {
+  resolveSession,
+  type ChannelConfig,
+  type EffectiveActorSettings,
+  type LLMConfig,
+  type WebSearchConfig,
+} from "ema";
+import type {
+  ActorLlmConfig,
+  ActorQQConfig,
+  ActorQQConnectionStatus,
+  ActorQQConversation,
+  ActorWebSearchConfig,
+} from "@/types/dashboard/v1beta1";
+
+export interface CoreConversationForQq {
+  id?: number;
+  session: string;
+  name: string;
+  description: string;
+  allowProactive?: boolean;
+}
+
+export function toWebLlmConfig(config: LLMConfig): ActorLlmConfig {
+  return {
+    provider: config.provider,
+    openai: {
+      mode: config.openai.mode,
+      model: config.openai.model,
+      baseUrl: config.openai.baseUrl,
+      apiKey: config.openai.apiKey,
+    },
+    google: {
+      model: config.google.model,
+      baseUrl: config.google.baseUrl,
+      apiKey: config.google.apiKey,
+      useVertexAi: config.google.useVertexAi,
+      project: config.google.project,
+      location: config.google.location,
+    },
+  };
+}
+
+export function toWebSearchConfig(
+  config: WebSearchConfig,
+): ActorWebSearchConfig {
+  return {
+    enabled: config.enabled,
+    tavilyApiKey: config.tavilyApiKey,
+  };
+}
+
+export function toWebQqConversation(
+  conversation: CoreConversationForQq,
+): ActorQQConversation | null {
+  if (typeof conversation.id !== "number") {
+    return null;
+  }
+  const session = resolveSession(conversation.session);
+  if (!session || session.channel !== "qq") {
+    return null;
+  }
+  if (session.type !== "chat" && session.type !== "group") {
+    return null;
+  }
+  return {
+    id: String(conversation.id),
+    type: session.type,
+    uid: session.uid,
+    name: conversation.name,
+    description: conversation.description,
+    allowProactive: conversation.allowProactive === true,
+  };
+}
+
+export function toWebQqConfig(
+  config: ChannelConfig["qq"],
+  conversations: CoreConversationForQq[] = [],
+): ActorQQConfig {
+  return {
+    enabled: config.enabled,
+    wsUrl: config.wsUrl,
+    accessToken: config.accessToken,
+    conversations: conversations
+      .map(toWebQqConversation)
+      .filter((item): item is ActorQQConversation => Boolean(item)),
+  };
+}
+
+export function toWebSettings(
+  settings: EffectiveActorSettings,
+  qqConversations: CoreConversationForQq[] = [],
+) {
+  return {
+    llm: toWebLlmConfig(settings.llm),
+    webSearch: toWebSearchConfig(settings.webSearch),
+    qq: toWebQqConfig(settings.channel.qq, qqConversations),
+  };
+}
+
+export function toWebQqConnectionStatus(
+  status: string,
+): ActorQQConnectionStatus {
+  if (
+    status === "disabled" ||
+    status === "unconfigured" ||
+    status === "connecting" ||
+    status === "connected" ||
+    status === "failed"
+  ) {
+    return status;
+  }
+  return "failed";
+}
