@@ -2,6 +2,12 @@ import "server-only";
 
 import { randomInt as cryptoRandomInt, randomUUID } from "node:crypto";
 import { switchActorEnabled } from "@/server/behaviors/actor-lifecycle";
+import {
+  toActorSummary,
+  toDashboardOverviewResponse,
+} from "@/server/ema-adapter/dashboard";
+import { DEFAULT_OWNER_USER_ID } from "@/server/ema-adapter/ids";
+import { ensureEmaServer } from "@/server/ema-server";
 import { syncQqConnection } from "@/server/behaviors/qq-connect";
 import { createEvent, publishEvent } from "@/server/events/bus";
 import {
@@ -12,9 +18,7 @@ import {
   saveActorQqSettings,
   saveActorWebSearchSettings,
 } from "@/server/store/actors";
-import { listConversationMessages, previewFromContents } from "@/server/store/messages";
 import { qqConnectionResponse } from "@/server/store/qq";
-import { getOwnerUser } from "@/server/store/users";
 import type {
   ActorActivityUpdateRequest,
   ActorActivityUpdateResponse,
@@ -88,37 +92,25 @@ function selectedLlmConfig(config: ActorLlmConfig) {
 }
 
 export async function buildDashboardOverview(): Promise<DashboardOverviewResponse> {
-  const user = await getOwnerUser();
+  const server = await ensureEmaServer();
+  const setupStatus = await server.controller.setup.getStatus();
+  const ownerUserId = setupStatus.owner?.id ?? DEFAULT_OWNER_USER_ID;
+  const detailsList = await server.controller.actor.listForUser(ownerUserId);
   const actors = await Promise.all(
-    (await listActorSummaries()).map(async (actor) => {
-      const messages = await listConversationMessages(
-        actor.id,
-        "web-chat-current-user",
-      );
-      const latest = messages.at(-1);
-      return {
-        ...actor,
-        ...(latest
-          ? {
-              latestPreview: {
-                text: previewFromContents(latest.contents),
-                time: latest.time ?? Date.now(),
-              },
-            }
-          : {}),
-      };
+    detailsList.map(async (details) => {
+      const [settings, qqConversations] = await Promise.all([
+        server.controller.settings.getEffective(details.actor.id),
+        server.controller.channel.listQqConversations(details.actor.id),
+      ]);
+      return toActorSummary(details, { settings, qqConversations });
     }),
   );
 
-  return {
-    apiVersion: API_VERSION,
-    generatedAt: now(),
-    user: {
-      id: user?.id ?? "current-user",
-      name: user?.name ?? "你",
-    },
+  return toDashboardOverviewResponse({
+    user: setupStatus.owner,
     actors,
-  };
+    generatedAt: now(),
+  });
 }
 
 export async function createActorService(

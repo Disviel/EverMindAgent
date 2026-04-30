@@ -56,6 +56,10 @@ const ACTOR_LATEST_PREVIEW_EXIT_DURATION = 260;
 const DASHBOARD_LAYOUT_STORAGE_KEY = "ema-webui-dashboard-layout-v3";
 const DASHBOARD_LAYOUT_RESET_KEY = "ema-webui-dashboard-layout-reset";
 const DASHBOARD_LAYOUT_RESET_TOKEN = "equal-side-layout-v1";
+const DASHBOARD_FIRST_LOGIN_STORAGE_KEY =
+  "ema-webui-dashboard-first-login-v1";
+const CREATE_ACTOR_GUIDE_STORAGE_KEY =
+  "ema-webui-create-actor-guide-dismissed-v1";
 const DASHBOARD_LAYOUT_STORAGE_KEYS = [
   "ema-webui-dashboard-layout",
   "ema-webui-dashboard-layout-v2",
@@ -117,8 +121,16 @@ function getDefaultDashboardLayout(): DashboardLayoutState {
       ? 1400
       : Math.max(960, window.innerWidth - 32);
   const availableWidth = contentWidth - LAYOUT_RESIZER_SIZE * 2;
-  const sidebarWidth = SIDEBAR_DEFAULT_WIDTH;
-  const actorInfoWidth = ACTOR_INFO_DEFAULT_WIDTH;
+  const ratioUnit = Math.round(availableWidth / 5);
+  const sidebarWidth = clamp(
+    ratioUnit,
+    SIDEBAR_EXPANDED_MIN_WIDTH,
+    Math.max(
+      SIDEBAR_EXPANDED_MIN_WIDTH,
+      availableWidth - CHAT_PANEL_MIN_WIDTH - ACTOR_INFO_MIN_WIDTH,
+    ),
+  );
+  const actorInfoWidth = Math.max(ACTOR_INFO_DEFAULT_WIDTH, ratioUnit * 2);
   const chatPanelWidth = Math.max(
     CHAT_PANEL_MIN_WIDTH,
     availableWidth - sidebarWidth - actorInfoWidth,
@@ -207,6 +219,10 @@ function DashboardContent() {
     Record<string, ActorLatestPreviewState>
   >({});
   const [createActorVisible, setCreateActorVisible] = useState(false);
+  const [createActorGuideStorageReady, setCreateActorGuideStorageReady] =
+    useState(false);
+  const [createActorGuideDismissed, setCreateActorGuideDismissed] =
+    useState(false);
   const [actorInfoActiveTab, setActorInfoActiveTab] =
     useState<ActorSideTabId>("schedule");
   const [startupTipActorId, setStartupTipActorId] = useState<string | null>(
@@ -238,7 +254,23 @@ function DashboardContent() {
   const isCreateActorActive = createActorVisible || isCreateActorRouteActive;
   const isHomeActive = !requestedActorId && !isCreateActorActive;
   const showCreateActorTip =
-    overviewLoaded && overview.actors.length === 0 && !isCreateActorActive;
+    createActorGuideStorageReady &&
+    overviewLoaded &&
+    overview.actors.length === 0 &&
+    !isCreateActorActive &&
+    !createActorGuideDismissed;
+
+  function dismissCreateActorGuide() {
+    setCreateActorGuideDismissed(true);
+    window.localStorage.setItem(CREATE_ACTOR_GUIDE_STORAGE_KEY, "1");
+  }
+
+  function openCreateActorOverlay() {
+    if (showCreateActorTip) {
+      dismissCreateActorGuide();
+    }
+    setCreateActorVisible(true);
+  }
 
   function closeCreateActorOverlay() {
     setCreateActorVisible(false);
@@ -335,12 +367,28 @@ function DashboardContent() {
   );
 
   useEffect(() => {
-    const storedLayout = getStoredDashboardLayout();
+    const isFirstDashboardEntry =
+      window.sessionStorage.getItem(DASHBOARD_FIRST_LOGIN_STORAGE_KEY) === "1";
+    if (isFirstDashboardEntry) {
+      window.sessionStorage.removeItem(DASHBOARD_FIRST_LOGIN_STORAGE_KEY);
+      window.localStorage.removeItem(DASHBOARD_LAYOUT_STORAGE_KEY);
+      window.localStorage.removeItem(CREATE_ACTOR_GUIDE_STORAGE_KEY);
+    }
+
+    const storedLayout = isFirstDashboardEntry
+      ? getDefaultDashboardLayout()
+      : getStoredDashboardLayout();
     setLayoutState(
       storedLayout.actorInfoVisible
         ? normalizeLayoutForViewport(storedLayout)
         : storedLayout,
     );
+    setCreateActorGuideDismissed(
+      isFirstDashboardEntry
+        ? false
+        : window.localStorage.getItem(CREATE_ACTOR_GUIDE_STORAGE_KEY) === "1",
+    );
+    setCreateActorGuideStorageReady(true);
     setLayoutStorageReady(true);
     // The initial client-only layout intentionally reads localStorage after
     // hydration so the server and first client render keep identical style
@@ -739,13 +787,16 @@ function DashboardContent() {
       ref={dashboardShellRef}
       className={`${styles.dashboardShell} ${
         resizingTarget ? styles.dashboardShellResizing : ""
-      }`}
+      } ${showCreateActorTip ? styles.dashboardShellOnboarding : ""}`}
       style={dashboardStyle}
     >
+      {showCreateActorTip ? (
+        <div className={styles.createActorGuideOverlay} aria-hidden="true" />
+      ) : null}
       <aside
         className={`${styles.sidebar} ${
           sidebarCollapsed ? styles.sidebarCollapsed : ""
-        }`}
+        } ${showCreateActorTip ? styles.sidebarCoachmarkActive : ""}`}
         aria-label="主导航"
       >
         <button
@@ -801,10 +852,10 @@ function DashboardContent() {
               type="button"
               className={`${styles.createActorButton} ${
                 isCreateActorActive ? styles.createActorButtonActive : ""
-              }`}
+              } ${showCreateActorTip ? styles.createActorButtonCoachTarget : ""}`}
               title="创建角色"
               aria-current={isCreateActorActive ? "page" : undefined}
-              onClick={() => setCreateActorVisible(true)}
+              onClick={openCreateActorOverlay}
             >
               <span className={styles.createActorIcon} aria-hidden="true">
                 <Plus />
@@ -814,9 +865,16 @@ function DashboardContent() {
               </span>
             </button>
             {showCreateActorTip ? (
-              <span className={styles.createActorBubbleTip} role="note">
-                从这里创建第一个角色
-              </span>
+              <div className={styles.createActorBubbleTip} role="note">
+                <span>点击这里创建第一个角色吧！</span>
+                <button
+                  type="button"
+                  className={styles.createActorGuideDismissButton}
+                  onClick={dismissCreateActorGuide}
+                >
+                  好的
+                </button>
+              </div>
             ) : null}
           </div>
         </nav>

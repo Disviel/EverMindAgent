@@ -89,6 +89,8 @@ const finalStepOrder: Record<FinalReviewStepId, number> = {
 };
 
 const APP_VERSION_BADGE = "v0.1.0 Beta";
+const DASHBOARD_FIRST_LOGIN_STORAGE_KEY =
+  "ema-webui-dashboard-first-login-v1";
 const CHECK_SUCCESS_HOLD_MS = 560;
 const CHECK_FAILED_HOLD_MS = 820;
 
@@ -794,6 +796,7 @@ export default function SetupPage() {
           );
           return;
         }
+        window.sessionStorage.setItem(DASHBOARD_FIRST_LOGIN_STORAGE_KEY, "1");
         router.replace("/dashboard");
       } catch (error) {
         setFinalCheck("failed");

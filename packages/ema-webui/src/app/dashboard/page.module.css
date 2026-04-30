@@ -8,6 +8,7 @@
   --actor-workspace-width: 1020px;
   --resize-track-width: 12px;
   --chat-panel-min-width: 520px;
+  position: relative;
   display: flex;
   height: 100dvh;
   max-height: 100dvh;
@@ -16,6 +17,14 @@
   overscroll-behavior: none;
   padding: 16px;
   background: var(--bg);
+}
+
+.createActorGuideOverlay {
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.76);
+  pointer-events: auto;
 }
 
 .sidebar {
@@ -38,6 +47,28 @@
     flex-basis 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
     width 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
     padding 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.sidebarCoachmarkActive {
+  position: relative;
+  z-index: 6;
+  overflow: visible;
+}
+
+.sidebarCoachmarkActive::after {
+  position: absolute;
+  z-index: 6;
+  inset: 0;
+  border-radius: inherit;
+  background: rgba(0, 0, 0, 0.66);
+  content: "";
+  pointer-events: none;
+}
+
+.sidebarCoachmarkActive .userButton,
+.sidebarCoachmarkActive .actorItem,
+.sidebarCoachmarkActive .createActorButton {
+  pointer-events: none;
 }
 
 .dashboardShellResizing,
@@ -313,49 +344,151 @@
   min-width: 0;
 }
 
+.sidebarCoachmarkActive .createActorEntry {
+  z-index: 8;
+}
+
 .createActorEntry .createActorButton {
   width: 100%;
 }
 
+.createActorButtonCoachTarget {
+  z-index: 7;
+  border-color: color-mix(in srgb, var(--accent) 54%, var(--border-strong));
+  background: color-mix(in srgb, var(--accent-soft) 72%, var(--surface-raised));
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent),
+    0 0 0 10px color-mix(in srgb, var(--accent) 5%, transparent),
+    0 14px 34px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 color-mix(in srgb, white 6%, transparent);
+  cursor: default;
+  pointer-events: none;
+}
+
+.createActorButton.createActorButtonCoachTarget:hover {
+  border-color: color-mix(in srgb, var(--accent) 64%, var(--border-strong));
+  background: color-mix(in srgb, var(--accent-soft) 88%, var(--surface-raised));
+}
+
 .createActorBubbleTip {
+  --guide-tip-bg: color-mix(in srgb, var(--surface-raised) 96%, black 4%);
+  --guide-tip-border: color-mix(in srgb, var(--accent) 28%, var(--border));
   position: absolute;
-  z-index: 5;
+  z-index: 9;
   top: 50%;
-  left: calc(100% + 10px);
+  left: calc(100% + 14px);
   display: inline-flex;
   align-items: center;
-  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
-  border-radius: 999px;
-  padding: 8px 12px;
-  background: color-mix(in srgb, var(--surface-raised) 88%, transparent);
+  justify-content: flex-start;
+  gap: 12px;
+  min-width: 262px;
+  min-height: 44px;
+  border: 1px solid var(--guide-tip-border);
+  border-radius: 16px;
+  padding: 7px 8px 7px 15px;
+  background: var(--guide-tip-bg);
   box-shadow:
-    0 12px 28px rgba(0, 0, 0, 0.22),
-    0 0 0 4px color-mix(in srgb, var(--accent) 8%, transparent),
-    inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
-  color: color-mix(in srgb, var(--text-muted) 90%, white 4%);
-  font-size: 0.74rem;
-  font-weight: 620;
-  letter-spacing: -0.014em;
+    0 18px 42px rgba(0, 0, 0, 0.32),
+    0 0 0 4px color-mix(in srgb, var(--accent) 7%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 7%, transparent);
+  color: color-mix(in srgb, var(--text) 90%, var(--accent-hover));
+  font-size: 0.78rem;
+  font-weight: 720;
+  letter-spacing: -0.018em;
   line-height: 1;
+  outline: 0;
   pointer-events: none;
   transform: translate3d(0, -50%, 0);
+  transition:
+    border-color 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    background-color 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
   user-select: none;
   white-space: nowrap;
   animation: createActorBubbleTipIn 360ms 160ms cubic-bezier(0.16, 1, 0.3, 1)
     both;
 }
 
+.createActorBubbleTip > span {
+  min-width: 0;
+  flex: 1 1 auto;
+  color: color-mix(in srgb, var(--text) 92%, var(--accent-hover));
+  font-size: 0.8rem;
+  font-weight: 720;
+  line-height: 1.2;
+}
+
 .createActorBubbleTip::before {
   position: absolute;
   top: 50%;
-  right: calc(100% - 1px);
-  width: 8px;
-  height: 8px;
-  border-bottom: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
-  border-left: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
-  background: color-mix(in srgb, var(--surface-raised) 88%, transparent);
+  right: 100%;
+  width: 0;
+  height: 0;
+  border-top: 12px solid transparent;
+  border-right: 14px solid var(--guide-tip-border);
+  border-bottom: 12px solid transparent;
   content: "";
-  transform: translate3d(0, -50%, 0) rotate(45deg);
+  transform: translate3d(0, -50%, 0);
+}
+
+.createActorBubbleTip::after {
+  position: absolute;
+  top: 50%;
+  right: calc(100% - 1px);
+  width: 0;
+  height: 0;
+  border-top: 10px solid transparent;
+  border-right: 12px solid var(--guide-tip-bg);
+  border-bottom: 10px solid transparent;
+  content: "";
+  transform: translate3d(0, -50%, 0);
+}
+
+.createActorBubbleTip:focus-within {
+  --guide-tip-bg: color-mix(in srgb, var(--surface-raised) 94%, var(--accent-soft));
+  --guide-tip-border: color-mix(in srgb, var(--accent) 46%, var(--border-strong));
+  box-shadow:
+    0 20px 48px rgba(0, 0, 0, 0.34),
+    0 0 0 5px color-mix(in srgb, var(--accent) 11%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 8%, transparent);
+  transform: translate3d(2px, -50%, 0);
+}
+
+.createActorGuideDismissButton {
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent);
+  border-radius: 999px;
+  padding: 0 12px;
+  background: color-mix(in srgb, var(--accent) 24%, var(--surface-active));
+  color: color-mix(in srgb, var(--text) 94%, var(--accent-hover));
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 760;
+  letter-spacing: -0.014em;
+  cursor: pointer;
+  outline: 0;
+  pointer-events: auto;
+  transition:
+    border-color 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    background-color 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    color 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.createActorGuideDismissButton:hover,
+.createActorGuideDismissButton:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 58%, var(--border-strong));
+  background: color-mix(in srgb, var(--accent) 34%, var(--surface-active));
+  color: var(--text);
+}
+
+.createActorGuideDismissButton:active {
+  transform: scale(0.97);
 }
 
 .createActorButton:hover {
@@ -4967,7 +5100,7 @@
 @keyframes createActorBubbleTipIn {
   from {
     opacity: 0;
-    transform: translate3d(-6px, -50%, 0) scale(0.96);
+    transform: translate3d(-8px, -50%, 0) scale(0.96);
     filter: blur(2px);
   }
 
@@ -4975,6 +5108,35 @@
     opacity: 1;
     transform: translate3d(0, -50%, 0) scale(1);
     filter: blur(0);
+  }
+}
+
+@keyframes createActorTargetPulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent),
+      0 0 0 10px color-mix(in srgb, var(--accent) 5%, transparent),
+      0 14px 34px rgba(0, 0, 0, 0.24),
+      inset 0 1px 0 color-mix(in srgb, white 6%, transparent);
+  }
+
+  50% {
+    box-shadow:
+      0 0 0 5px color-mix(in srgb, var(--accent) 18%, transparent),
+      0 0 0 16px color-mix(in srgb, var(--accent) 7%, transparent),
+      0 18px 42px rgba(0, 0, 0, 0.3),
+      inset 0 1px 0 color-mix(in srgb, white 7%, transparent);
+  }
+}
+
+@keyframes coachBackdropEnter {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
   }
 }
 
@@ -5151,6 +5313,48 @@
   .dashboardShell {
     --sidebar-width: 208px;
     padding: 10px;
+  }
+
+  .createActorGuideOverlay {
+    background: rgba(0, 0, 0, 0.76);
+  }
+
+  .createActorBubbleTip {
+    top: calc(100% + 9px);
+    right: 0;
+    left: 0;
+    justify-content: center;
+    min-width: 0;
+    gap: 10px;
+    transform: none;
+  }
+
+  .createActorBubbleTip::before {
+    top: auto;
+    right: auto;
+    bottom: 100%;
+    left: 24px;
+    border: 0;
+    border-right: 12px solid transparent;
+    border-bottom: 14px solid var(--guide-tip-border);
+    border-left: 12px solid transparent;
+    transform: none;
+  }
+
+  .createActorBubbleTip::after {
+    top: auto;
+    right: auto;
+    bottom: calc(100% - 1px);
+    left: 26px;
+    border: 0;
+    border-right: 10px solid transparent;
+    border-bottom: 12px solid var(--guide-tip-bg);
+    border-left: 10px solid transparent;
+    transform: none;
+  }
+
+  .createActorBubbleTip:focus-within {
+    transform: none;
   }
 
   .sidebar,
