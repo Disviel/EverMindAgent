@@ -1,0 +1,13 @@
+export const LAYOUT_RESIZER_SIZE = 12;
+export const ACTOR_INFO_CONTENT_WIDTH = 400;
+export const ACTOR_INFO_DEFAULT_WIDTH = ACTOR_INFO_CONTENT_WIDTH + 28;
+export const ACTOR_INFO_MIN_WIDTH = ACTOR_INFO_DEFAULT_WIDTH;
+export const SIDEBAR_DEFAULT_WIDTH = ACTOR_INFO_MIN_WIDTH;
+export const SIDEBAR_EXPANDED_MIN_WIDTH = 220;
+export const SIDEBAR_COLLAPSED_WIDTH = 72;
+export const SIDEBAR_COLLAPSE_THRESHOLD = 180;
+export const CHAT_PANEL_MIN_WIDTH = 520;
+
+export const APP_BRAND_NAME = "EverMemoryArchive";
+export const APP_BRAND_BADGE = "v0.1.0 Beta";
+export const APP_RELEASE_VERSION = "0.1.0-beta.1";

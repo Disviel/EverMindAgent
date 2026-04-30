@@ -19,7 +19,10 @@
     "build:main": "pnpm --filter ema build",
     "test:main": "pnpm --filter ema test",
     "format": "prettier --write \"{packages,scripts}/**/*.{js,jsx,ts,tsx,json,css}\"",
-    "format:check": "prettier --check \"{packages,scripts}/**/*.{js,jsx,ts,tsx,json,css}\""
+    "format:check": "prettier --check \"{packages,scripts}/**/*.{js,jsx,ts,tsx,json,css}\"",
+    "webui": "pnpm --filter ema-webui start",
+    "webui:dev": "pnpm --filter ema-webui dev",
+    "webui:build": "pnpm --filter ema-webui build"
   },
   "keywords": [],
   "packageManager": "pnpm@10.16.1",

@@ -1,0 +1,25 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# testing
+/coverage
+
+# mock runtime data
+/.cache/
+
+# env files
+.env*
+
+# misc
+.DS_Store
+*.pem
+*.tsbuildinfo
