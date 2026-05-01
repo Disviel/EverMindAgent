@@ -5,8 +5,13 @@ import { switchActorEnabled } from "@/server/behaviors/actor-lifecycle";
 import {
   toActorSummary,
   toDashboardOverviewResponse,
+  toDashboardUserProfile,
 } from "@/server/ema-adapter/dashboard";
-import { DEFAULT_OWNER_USER_ID } from "@/server/ema-adapter/ids";
+import {
+  DEFAULT_OWNER_USER_ID,
+  toCoreActorId,
+} from "@/server/ema-adapter/ids";
+import { toWebSettings } from "@/server/ema-adapter/settings";
 import { ensureEmaServer } from "@/server/ema-server";
 import { syncQqConnection } from "@/server/behaviors/qq-connect";
 import { createEvent, publishEvent } from "@/server/events/bus";
@@ -18,20 +23,28 @@ import {
   saveActorQqSettings,
   saveActorWebSearchSettings,
 } from "@/server/store/actors";
-import { qqConnectionResponse } from "@/server/store/qq";
+import { getQqConnection, qqConnectionResponse } from "@/server/store/qq";
 import type {
   ActorActivityUpdateRequest,
   ActorActivityUpdateResponse,
+  ActorListResponse,
   ActorLlmCheckRequest,
   ActorLlmCheckResponse,
   ActorLlmConfig,
   ActorLlmSaveRequest,
   ActorLlmSaveResponse,
+  ActorQQChannelResponse,
   ActorQQConfig,
   ActorQQConnectionStatusRequest,
   ActorQQConnectionStatusResponse,
+  ActorQQConversation,
+  ActorQQConversationCreateRequest,
+  ActorQQConversationListResponse,
+  ActorQQConversationMutationResponse,
+  ActorQQConversationPatchRequest,
   ActorQQSaveRequest,
   ActorQQSaveResponse,
+  ActorSettingsResponse,
   ActorSettingsCheckErrorCode,
   ActorSettingsDiagnostics,
   ActorSettingsSaveErrorCode,
@@ -40,6 +53,7 @@ import type {
   CreateActorRequest,
   CreateActorResponse,
   DashboardOverviewResponse,
+  OwnerResponse,
 } from "@/types/dashboard/v1beta1";
 
 const API_VERSION = "v1beta1" as const;
@@ -47,6 +61,12 @@ const LLM_PROBE_PASS_RATE = 0.66;
 const LLM_SAVE_PASS_RATE = 0.82;
 const WEB_SEARCH_SAVE_PASS_RATE = 0.86;
 const QQ_SAVE_PASS_RATE = 0.86;
+const EMPTY_QQ_CONFIG: ActorQQConfig = {
+  enabled: false,
+  wsUrl: "",
+  accessToken: "",
+  conversations: [],
+};
 
 const sleep = (duration: number) =>
   new Promise((resolve) => setTimeout(resolve, duration));
@@ -111,6 +131,263 @@ export async function buildDashboardOverview(): Promise<DashboardOverviewRespons
     actors,
     generatedAt: now(),
   });
+}
+
+export async function buildOwnerResponse(): Promise<OwnerResponse> {
+  const server = await ensureEmaServer();
+  const setupStatus = await server.controller.setup.getStatus();
+  return {
+    apiVersion: API_VERSION,
+    user: toDashboardUserProfile(setupStatus.owner),
+  };
+}
+
+export async function buildActorListResponse(): Promise<ActorListResponse> {
+  const server = await ensureEmaServer();
+  const setupStatus = await server.controller.setup.getStatus();
+  const ownerUserId = setupStatus.owner?.id ?? DEFAULT_OWNER_USER_ID;
+  const detailsList = await server.controller.actor.listForUser(ownerUserId);
+  return {
+    apiVersion: API_VERSION,
+    generatedAt: now(),
+    actors: detailsList.map((details) => toActorSummary(details)),
+  };
+}
+
+export async function buildActorSettingsResponse(
+  actorId: string,
+): Promise<ActorSettingsResponse> {
+  const existingActor = await getActorRecord(actorId);
+  if (existingActor) {
+    return {
+      apiVersion: API_VERSION,
+      actorId,
+      settings: {
+        ...existingActor.settings,
+        qq: {
+          ...existingActor.settings.qq,
+          conversations: existingActor.settings.qq.conversations.map(
+            (conversation) => ({ ...conversation }),
+          ),
+        },
+      },
+    };
+  }
+
+  try {
+    const coreActorId = toCoreActorId(actorId);
+    const server = await ensureEmaServer();
+    const [settings, qqConversations] = await Promise.all([
+      server.controller.settings.getEffective(coreActorId),
+      server.controller.channel.listQqConversations(coreActorId),
+    ]);
+    return {
+      apiVersion: API_VERSION,
+      actorId,
+      settings: toWebSettings(settings, qqConversations),
+    };
+  } catch {
+    return {
+      apiVersion: API_VERSION,
+      actorId,
+      settings: {
+        qq: { ...EMPTY_QQ_CONFIG, conversations: [] },
+      },
+    };
+  }
+}
+
+export async function buildActorQqChannelResponse(
+  actorId: string,
+): Promise<ActorQQChannelResponse> {
+  const [settings, connection] = await Promise.all([
+    buildActorSettingsResponse(actorId),
+    getQqConnection(actorId),
+  ]);
+  const config = settings.settings.qq ?? {
+    ...EMPTY_QQ_CONFIG,
+    conversations: [],
+  };
+  return {
+    apiVersion: API_VERSION,
+    actorId,
+    config,
+    connection: connection
+      ? {
+          id: `qq-connection-${actorId}`,
+          target: "qq",
+          actorId,
+          status: connection.status,
+          reason: "poll",
+          endpoint: connection.endpoint,
+          enabled: connection.enabled,
+          checkedAt: connection.checkedAt,
+          retryable: connection.status === "failed",
+          diagnostics: {},
+        }
+      : null,
+  };
+}
+
+export async function listActorQqConversationsService(
+  actorId: string,
+): Promise<ActorQQConversationListResponse> {
+  const settings = await buildActorSettingsResponse(actorId);
+  return {
+    apiVersion: API_VERSION,
+    actorId,
+    conversations: settings.settings.qq?.conversations ?? [],
+  };
+}
+
+export async function createActorQqConversationService(
+  actorId: string,
+  request: Partial<ActorQQConversationCreateRequest>,
+): Promise<ActorQQConversationMutationResponse> {
+  const actor = await getActorRecord(actorId);
+  const conversation = request.conversation;
+  if (!actor || !conversation) {
+    return qqConversationError(actorId, "INVALID_CONFIG", "invalid conversation");
+  }
+  if (
+    actor.settings.qq.conversations.some(
+      (item) => item.type === conversation.type && item.uid === conversation.uid,
+    )
+  ) {
+    return qqConversationError(actorId, "CONVERSATION_EXISTS", "conversation exists");
+  }
+
+  const nextConversation: ActorQQConversation = {
+    id: `qq-${conversation.type}-${conversation.uid}`,
+    type: conversation.type,
+    uid: conversation.uid,
+    name: conversation.name,
+    description: conversation.description,
+    allowProactive: conversation.allowProactive,
+  };
+  const ok = await saveActorQqSettings(actorId, {
+    ...actor.settings.qq,
+    conversations: [...actor.settings.qq.conversations, nextConversation],
+  });
+  if (ok) {
+    await publishActorUpdated(actorId);
+  }
+  return {
+    apiVersion: API_VERSION,
+    ok,
+    actorId,
+    conversation: nextConversation,
+  };
+}
+
+export async function patchActorQqConversationService(
+  actorId: string,
+  conversationId: string,
+  request: Partial<ActorQQConversationPatchRequest>,
+): Promise<ActorQQConversationMutationResponse> {
+  const actor = await getActorRecord(actorId);
+  if (!actor) {
+    return qqConversationError(
+      actorId,
+      "CONVERSATION_NOT_FOUND",
+      "conversation not found",
+    );
+  }
+  const index = actor.settings.qq.conversations.findIndex(
+    (item) => item.id === conversationId,
+  );
+  if (index < 0) {
+    return qqConversationError(
+      actorId,
+      "CONVERSATION_NOT_FOUND",
+      "conversation not found",
+    );
+  }
+
+  const current = actor.settings.qq.conversations[index];
+  const nextConversation: ActorQQConversation = {
+    ...current,
+    ...(typeof request.patch?.name === "string"
+      ? { name: request.patch.name }
+      : {}),
+    ...(typeof request.patch?.description === "string"
+      ? { description: request.patch.description }
+      : {}),
+    ...(typeof request.patch?.allowProactive === "boolean"
+      ? { allowProactive: request.patch.allowProactive }
+      : {}),
+  };
+  const nextConversations = actor.settings.qq.conversations.map((item, itemIndex) =>
+    itemIndex === index ? nextConversation : item,
+  );
+  const ok = await saveActorQqSettings(actorId, {
+    ...actor.settings.qq,
+    conversations: nextConversations,
+  });
+  if (ok) {
+    await publishActorUpdated(actorId);
+  }
+  return {
+    apiVersion: API_VERSION,
+    ok,
+    actorId,
+    conversation: nextConversation,
+  };
+}
+
+export async function deleteActorQqConversationService(
+  actorId: string,
+  conversationId: string,
+): Promise<ActorQQConversationMutationResponse> {
+  const actor = await getActorRecord(actorId);
+  if (!actor) {
+    return qqConversationError(
+      actorId,
+      "CONVERSATION_NOT_FOUND",
+      "conversation not found",
+    );
+  }
+  const nextConversations = actor.settings.qq.conversations.filter(
+    (item) => item.id !== conversationId,
+  );
+  if (nextConversations.length === actor.settings.qq.conversations.length) {
+    return qqConversationError(
+      actorId,
+      "CONVERSATION_NOT_FOUND",
+      "conversation not found",
+    );
+  }
+
+  const ok = await saveActorQqSettings(actorId, {
+    ...actor.settings.qq,
+    conversations: nextConversations,
+  });
+  if (ok) {
+    await publishActorUpdated(actorId);
+  }
+  return {
+    apiVersion: API_VERSION,
+    ok,
+    actorId,
+    conversationId,
+  };
+}
+
+function qqConversationError(
+  actorId: string,
+  code: NonNullable<ActorQQConversationMutationResponse["error"]>["code"],
+  message: string,
+): ActorQQConversationMutationResponse {
+  return {
+    apiVersion: API_VERSION,
+    ok: false,
+    actorId,
+    error: {
+      code,
+      retryable: false,
+      message,
+    },
+  };
 }
 
 export async function createActorService(

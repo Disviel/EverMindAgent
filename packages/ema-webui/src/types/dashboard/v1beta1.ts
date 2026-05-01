@@ -36,6 +36,12 @@ export interface DashboardUserProfile {
   name: string;
 }
 
+export interface ActorSettingsSnapshot {
+  llm?: ActorLlmConfig;
+  webSearch?: ActorWebSearchConfig;
+  qq?: ActorQQConfig;
+}
+
 export interface ActorSummary {
   id: string;
   name: string;
@@ -44,11 +50,7 @@ export interface ActorSummary {
     text: string;
     time: number;
   };
-  settings?: {
-    llm?: ActorLlmConfig;
-    webSearch?: ActorWebSearchConfig;
-    qq?: ActorQQConfig;
-  };
+  settings?: ActorSettingsSnapshot;
 }
 
 export interface ActorActivityState {
@@ -80,6 +82,23 @@ export interface DashboardOverviewResponse {
   generatedAt: string;
   user: DashboardUserProfile;
   actors: ActorSummary[];
+}
+
+export interface OwnerResponse {
+  apiVersion: "v1beta1";
+  user: DashboardUserProfile;
+}
+
+export interface ActorListResponse {
+  apiVersion: "v1beta1";
+  generatedAt: string;
+  actors: ActorSummary[];
+}
+
+export interface ActorSettingsResponse {
+  apiVersion: "v1beta1";
+  actorId: string;
+  settings: ActorSettingsSnapshot;
 }
 
 export interface CreateActorRequest {
@@ -253,6 +272,13 @@ export interface ActorQQConnectionStatusResponse {
   };
 }
 
+export interface ActorQQChannelResponse {
+  apiVersion: "v1beta1";
+  actorId: string;
+  config: ActorQQConfig;
+  connection: ActorQQConnectionStatusResponse["connection"] | null;
+}
+
 export interface ActorQQSaveRequest {
   requestId?: string;
   config: ActorQQConfig;
@@ -275,5 +301,36 @@ export interface ActorQQSaveResponse {
       details: ActorSettingsDiagnostics;
     };
     diagnostics: ActorSettingsDiagnostics;
+  };
+}
+
+export interface ActorQQConversationListResponse {
+  apiVersion: "v1beta1";
+  actorId: string;
+  conversations: ActorQQConversation[];
+}
+
+export interface ActorQQConversationCreateRequest {
+  requestId?: string;
+  conversation: Omit<ActorQQConversation, "id">;
+}
+
+export interface ActorQQConversationPatchRequest {
+  requestId?: string;
+  patch: Partial<
+    Pick<ActorQQConversation, "name" | "description" | "allowProactive">
+  >;
+}
+
+export interface ActorQQConversationMutationResponse {
+  apiVersion: "v1beta1";
+  ok: boolean;
+  actorId: string;
+  conversation?: ActorQQConversation;
+  conversationId?: string;
+  error?: {
+    code: "INVALID_CONFIG" | "CONVERSATION_EXISTS" | "CONVERSATION_NOT_FOUND";
+    retryable: boolean;
+    message: string;
   };
 }

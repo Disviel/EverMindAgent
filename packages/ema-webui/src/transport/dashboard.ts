@@ -5,6 +5,7 @@ import type {
   ActorLlmCheckResponse,
   ActorLlmConfig,
   ActorLlmSaveResponse,
+  ActorListResponse,
   ActorQQConnectionStatusResponse,
   ActorQQConnectionSyncReason,
   ActorQQConfig,
@@ -12,6 +13,7 @@ import type {
   ActorWebSearchConfig,
   ActorWebSearchSaveResponse,
   DashboardOverviewResponse,
+  OwnerResponse,
 } from "@/types/dashboard/v1beta1";
 
 async function fetchJson<T>(input: string, init?: RequestInit): Promise<T> {
@@ -52,17 +54,25 @@ function extractMessage(payload: unknown) {
   return null;
 }
 
-export function getDashboardOverview() {
-  return fetchJson<DashboardOverviewResponse>(
-    "/api/v1beta1/dashboard/overview",
-    {
+export async function getDashboardOverview() {
+  const [owner, actors] = await Promise.all([
+    fetchJson<OwnerResponse>("/api/v1beta1/owner", {
       method: "GET",
-    },
-  );
+    }),
+    fetchJson<ActorListResponse>("/api/v1beta1/actors", {
+      method: "GET",
+    }),
+  ]);
+  return {
+    apiVersion: "v1beta1",
+    generatedAt: actors.generatedAt,
+    user: owner.user,
+    actors: actors.actors,
+  } satisfies DashboardOverviewResponse;
 }
 
 export function createActor(request: CreateActorRequest) {
-  return fetchJson<CreateActorResponse>("/api/v1beta1/dashboard/actors", {
+  return fetchJson<CreateActorResponse>("/api/v1beta1/actors", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
@@ -71,9 +81,9 @@ export function createActor(request: CreateActorRequest) {
 
 export function updateActorActivity(actorId: string, enabled: boolean) {
   return fetchJson<ActorActivityUpdateResponse>(
-    `/api/v1beta1/dashboard/actors/${encodeURIComponent(actorId)}/activity`,
+    `/api/v1beta1/actors/${encodeURIComponent(actorId)}/runtime`,
     {
-      method: "POST",
+      method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ enabled }),
     },
@@ -86,7 +96,7 @@ export function runActorLlmCheck(
   attempt = 0,
 ) {
   return fetchJson<ActorLlmCheckResponse>(
-    `/api/v1beta1/dashboard/actors/${encodeURIComponent(actorId)}/llm/check`,
+    `/api/v1beta1/actors/${encodeURIComponent(actorId)}/settings/llm/probes`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -100,9 +110,9 @@ export function runActorLlmCheck(
 
 export function saveActorLlmConfig(actorId: string, config: ActorLlmConfig) {
   return fetchJson<ActorLlmSaveResponse>(
-    `/api/v1beta1/dashboard/actors/${encodeURIComponent(actorId)}/llm/save`,
+    `/api/v1beta1/actors/${encodeURIComponent(actorId)}/settings/llm`,
     {
-      method: "POST",
+      method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ config }),
     },
@@ -114,9 +124,9 @@ export function saveActorWebSearchConfig(
   config: ActorWebSearchConfig,
 ) {
   return fetchJson<ActorWebSearchSaveResponse>(
-    `/api/v1beta1/dashboard/actors/${encodeURIComponent(actorId)}/web-search/save`,
+    `/api/v1beta1/actors/${encodeURIComponent(actorId)}/settings/web-search`,
     {
-      method: "POST",
+      method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ config }),
     },
@@ -125,9 +135,9 @@ export function saveActorWebSearchConfig(
 
 export function saveActorQqConfig(actorId: string, config: ActorQQConfig) {
   return fetchJson<ActorQQSaveResponse>(
-    `/api/v1beta1/dashboard/actors/${encodeURIComponent(actorId)}/qq/save`,
+    `/api/v1beta1/actors/${encodeURIComponent(actorId)}/channels/qq`,
     {
-      method: "POST",
+      method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ config }),
     },
@@ -139,7 +149,7 @@ export function syncActorQqConnectionStatus(
   reason: ActorQQConnectionSyncReason,
 ) {
   return fetchJson<ActorQQConnectionStatusResponse>(
-    `/api/v1beta1/dashboard/actors/${encodeURIComponent(actorId)}/qq/status`,
+    `/api/v1beta1/actors/${encodeURIComponent(actorId)}/channels/qq/connection-syncs`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },

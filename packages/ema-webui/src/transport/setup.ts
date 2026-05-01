@@ -52,9 +52,9 @@ function extractTransportError(payload: unknown): string | null {
 }
 
 const setupCheckEndpoints: Record<SetupCheckTarget, string> = {
-  mongo: "/api/v1beta1/setup/checks/mongo",
-  llm: "/api/v1beta1/setup/checks/llm",
-  embedding: "/api/v1beta1/setup/checks/embedding",
+  mongo: "",
+  llm: "/api/v1beta1/initialization/llm-probes",
+  embedding: "/api/v1beta1/initialization/embedding-probes",
 };
 
 export async function runSetupCheck(
@@ -63,7 +63,11 @@ export async function runSetupCheck(
   phase: SetupCheckPhase,
   attempt = 0,
 ) {
-  return fetchJson<SetupServiceCheckResponse>(setupCheckEndpoints[target], {
+  const endpoint = setupCheckEndpoints[target];
+  if (!endpoint) {
+    throw new Error("Mongo setup check is no longer supported.");
+  }
+  return fetchJson<SetupServiceCheckResponse>(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -75,7 +79,7 @@ export async function runSetupCheck(
 }
 
 export async function runSetupDryRun(draft: SetupDraft) {
-  return fetchJson<SetupDryRunResponse>("/api/v1beta1/setup/dry-run", {
+  return fetchJson<SetupDryRunResponse>("/api/v1beta1/initialization/validations", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ draft }),
@@ -83,8 +87,8 @@ export async function runSetupDryRun(draft: SetupDraft) {
 }
 
 export async function commitSetup(draft: SetupDraft) {
-  return fetchJson<SetupCommitResponse>("/api/v1beta1/setup/commit", {
-    method: "POST",
+  return fetchJson<SetupCommitResponse>("/api/v1beta1/initialization", {
+    method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ draft }),
   });

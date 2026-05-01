@@ -60,7 +60,7 @@ export function getChatHistory({
   }
 
   return fetchJson<ChatHistoryResponse>(
-    `/api/v1beta1/chat/${encodeURIComponent(session)}/history?${params}`,
+    `/api/v1beta1/actors/${encodeURIComponent(actorId)}/conversations/${encodeURIComponent(session)}/messages?${params}`,
     {
       method: "GET",
     },
@@ -76,9 +76,8 @@ export function sendChatMessage({
   session: string;
   request: SendMessageRequest;
 }) {
-  const params = new URLSearchParams({ actorId });
   return fetchJson<SendMessageResponse>(
-    `/api/v1beta1/chat/${encodeURIComponent(session)}/send?${params}`,
+    `/api/v1beta1/actors/${encodeURIComponent(actorId)}/conversations/${encodeURIComponent(session)}/messages`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },

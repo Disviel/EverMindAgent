@@ -10,9 +10,8 @@ export function subscribeChatEvents({
   session: string;
   handler: (event: EmaKnownEvent) => void;
 }) {
-  const params = new URLSearchParams({ actorId });
   return subscribeSse<EmaKnownEvent>(
-    `/api/v1beta1/chat/${encodeURIComponent(session)}/stream?${params}`,
+    `/api/v1beta1/actors/${encodeURIComponent(actorId)}/conversations/${encodeURIComponent(session)}/stream`,
     handler,
   );
 }
