@@ -117,12 +117,17 @@ const COMPOSER_MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 const COPY_TOAST_DURATION = 1400;
 const DEFAULT_WEB_CHAT_SESSION = "web-chat-1";
 const statusText: Record<ActorRuntimeStatus, string> = {
-  sleeping: "睡眠",
-  preparing: "准备中",
+  sleep: "睡眠",
   online: "在线",
   busy: "忙碌",
   offline: "离线",
 };
+const transitionText = {
+  booting: "启动中",
+  shutting_down: "关闭中",
+  waking: "唤醒中",
+  sleeping: "入睡中",
+} as const;
 
 function userInitial(name: string) {
   return Array.from(name.trim())[0]?.toUpperCase() ?? "U";
@@ -278,11 +283,14 @@ export function ChatPanel({
     attachmentImages,
     inlineImagesById,
   );
-  const composerLocked =
-    actor.status === "offline" || actor.status === "preparing";
+  const lifecycleInputLocked =
+    actor.transition === "booting" || actor.transition === "shutting_down";
+  const composerLocked = actor.status === "offline" || lifecycleInputLocked;
   const composerLockedNotice =
-    actor.status === "preparing"
-      ? "角色状态变更中，稍后再发送"
+    actor.transition === "booting"
+      ? "角色正在启动，稍后再发送"
+      : actor.transition === "shutting_down"
+        ? "角色正在关闭，稍后再发送"
       : "请先在设置页启用角色";
   const canSendMessage =
     !composerLocked &&
@@ -2063,10 +2071,14 @@ export function ChatPanel({
     userName,
   );
   const showConversationTyping =
-    conversationTyping && actor.status === "online";
+    conversationTyping && actor.status === "online" && actor.transition === null;
+  const runtimeStatusLabel = actor.transition
+    ? transitionText[actor.transition]
+    : statusText[actor.status];
   const chatStatusLabel = showConversationTyping
     ? "正在输入..."
-    : statusText[actor.status];
+    : runtimeStatusLabel;
+  const runtimeStatusClass = actor.transition ? "preparing" : actor.status;
 
   return (
     <div className={styles.chatShell}>
@@ -2074,7 +2086,7 @@ export function ChatPanel({
         <div className={styles.chatIdentity}>
           <div className={styles.chatTitleLine}>
             <span
-              className={`${styles.chatTitleStatus} ${styles[actor.status]}`}
+              className={`${styles.chatTitleStatus} ${styles[runtimeStatusClass]}`}
               aria-label={chatStatusLabel}
             />
             <h1>{actor.name}</h1>
@@ -2093,7 +2105,7 @@ export function ChatPanel({
                   </span>
                 </>
               ) : (
-                statusText[actor.status]
+                runtimeStatusLabel
               )}
             </span>
           </div>

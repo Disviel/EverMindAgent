@@ -13,6 +13,7 @@ import type {
   ActorChatInput,
   ActorInput,
   ActorStatus,
+  ActorTransition,
   ActorSystemInput,
 } from "./base";
 import { ActorWorker } from "./actor_worker";
@@ -36,6 +37,7 @@ export class Actor {
   private acquiring = false;
   private bootInitPromise: Promise<void> | null = null;
   private status: ActorStatus = "sleep";
+  private transition: ActorTransition = null;
   private dayDate: string | null = null;
   private readonly logger: Logger;
 
@@ -71,6 +73,10 @@ export class Actor {
 
   getStatus(): ActorStatus {
     return this.status;
+  }
+
+  getTransition(): ActorTransition {
+    return this.transition;
   }
 
   getDayDate(): string | null {
@@ -135,6 +141,7 @@ export class Actor {
     }
     this.stopSleepTimer();
     this.status = "switching";
+    this.transition = "waking";
     this.logger.info("Actor waking");
     this.publishRuntimeStatus("wake:start");
     return true;
@@ -143,6 +150,7 @@ export class Actor {
   completeWake(): void {
     this.dayDate = formatTimestamp("YYYY-MM-DD", Date.now());
     this.status = "awake";
+    this.transition = null;
     this.logger.info("Actor awake", { dayDate: this.dayDate });
     this.publishRuntimeStatus("wake:complete");
     this.tryAcquireConversation();
@@ -150,6 +158,7 @@ export class Actor {
 
   failWake(): void {
     this.status = "sleep";
+    this.transition = null;
     this.logger.warn("Actor wake failed");
     this.publishRuntimeStatus("wake:failed");
   }
@@ -179,6 +188,7 @@ export class Actor {
       return false;
     }
     this.status = "switching";
+    this.transition = "sleeping";
     this.logger.info("Actor sleeping");
     this.publishRuntimeStatus("sleep:start");
     return true;
@@ -188,12 +198,14 @@ export class Actor {
     this.stopSleepTimer();
     this.dayDate = null;
     this.status = "sleep";
+    this.transition = null;
     this.logger.info("Actor asleep");
     this.publishRuntimeStatus("sleep:complete");
   }
 
   failSleep(): void {
     this.status = "awake";
+    this.transition = null;
     this.logger.warn("Actor sleep failed");
     this.publishRuntimeStatus("sleep:failed");
     this.tryAcquireConversation();
@@ -492,6 +504,7 @@ export class Actor {
     this.sessionManager.clear();
     this.releaseConversation();
     this.status = "sleep";
+    this.transition = null;
     this.dayDate = null;
     this.logger.info("Actor runtime disposed");
   }

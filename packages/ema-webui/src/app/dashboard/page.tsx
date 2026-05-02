@@ -39,6 +39,7 @@ import { subscribeEmaEvents } from "@/transport/events";
 import type { EmaKnownEvent } from "@/types/events/v1beta1";
 import type {
   ActorRuntimeStatus,
+  ActorRuntimeTransition,
   DashboardOverviewResponse,
 } from "@/types/dashboard/v1beta1";
 
@@ -355,9 +356,13 @@ function DashboardContent() {
     [],
   );
 
-  const updateActorRuntimeStatus = useCallback(
-    (actorId: string, status: ActorRuntimeStatus) => {
-      if (status !== "offline" && status !== "preparing") {
+  const updateActorRuntimeState = useCallback(
+    (
+      actorId: string,
+      status: ActorRuntimeStatus,
+      transition: ActorRuntimeTransition,
+    ) => {
+      if (transition === "booting" || status !== "offline") {
         setStartupTipActorId((current) => {
           if (current !== actorId) {
             return current;
@@ -370,7 +375,7 @@ function DashboardContent() {
       setOverview((current) => ({
         ...current,
         actors: current.actors.map((actor) =>
-          actor.id === actorId ? { ...actor, status } : actor,
+          actor.id === actorId ? { ...actor, status, transition } : actor,
         ),
       }));
     },
@@ -430,7 +435,8 @@ function DashboardContent() {
     if (
       !activeActor ||
       startupTipActorId !== activeActor.id ||
-      activeActor.status !== "offline"
+      activeActor.status !== "offline" ||
+      activeActor.transition !== null
     ) {
       return;
     }
@@ -562,7 +568,11 @@ function DashboardContent() {
       }
 
       if (event.type === "actor.runtime.changed" && event.actorId) {
-        updateActorRuntimeStatus(event.actorId, event.data.status);
+        updateActorRuntimeState(
+          event.actorId,
+          event.data.status,
+          event.data.transition,
+        );
         return;
       }
 
@@ -582,7 +592,7 @@ function DashboardContent() {
     });
 
     return () => subscription.close();
-  }, [activeActorId, updateActorLatestPreview, updateActorRuntimeStatus]);
+  }, [activeActorId, updateActorLatestPreview, updateActorRuntimeState]);
 
   function getDashboardContentWidth() {
     const shell = dashboardShellRef.current;
@@ -997,7 +1007,8 @@ function DashboardContent() {
                   actor={activeActor}
                   showStartupTip={
                     startupTipActorId === activeActor.id &&
-                    activeActor.status === "offline"
+                    activeActor.status === "offline" &&
+                    activeActor.transition === null
                   }
                   onStartupTipDismiss={() => {
                     window.localStorage.removeItem(
@@ -1005,7 +1016,7 @@ function DashboardContent() {
                     );
                     setStartupTipActorId(null);
                   }}
-                  onActorStatusChange={updateActorRuntimeStatus}
+                  onActorRuntimeChange={updateActorRuntimeState}
                 />
               )}
             />

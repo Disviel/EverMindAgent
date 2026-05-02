@@ -15,12 +15,17 @@ export interface ActorLatestPreviewState {
 }
 
 const statusText: Record<ActorRuntimeStatus, string> = {
-  sleeping: "睡眠",
-  preparing: "准备中",
+  sleep: "睡眠",
   online: "在线",
   busy: "忙碌",
   offline: "离线",
 };
+const transitionText = {
+  booting: "启动中",
+  shutting_down: "关闭中",
+  waking: "唤醒中",
+  sleeping: "入睡中",
+} as const;
 
 function actorAvatarText(name: string) {
   const actorMatch = /^actor\s*(\d+)$/i.exec(name.trim());
@@ -85,6 +90,10 @@ export function ActorItem({
   const currentPreview = latestPreview?.current;
   const exitingPreview = latestPreview?.exiting;
   const hasPreview = Boolean(currentPreview || exitingPreview);
+  const runtimeStatusLabel = actor.transition
+    ? transitionText[actor.transition]
+    : statusText[actor.status];
+  const runtimeStatusClass = actor.transition ? "preparing" : actor.status;
 
   function renderPreviewLine(
     preview: ActorLatestPreview,
@@ -121,8 +130,8 @@ export function ActorItem({
       <span className={styles.actorAvatar}>
         {actorAvatarText(actor.name)}
         <span
-          className={`${styles.statusDot} ${styles[actor.status]}`}
-          aria-label={statusText[actor.status]}
+          className={`${styles.statusDot} ${styles[runtimeStatusClass]}`}
+          aria-label={runtimeStatusLabel}
         />
       </span>
       <span className={styles.actorCopy}>

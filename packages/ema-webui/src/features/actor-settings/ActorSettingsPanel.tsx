@@ -68,6 +68,7 @@ import type {
   ActorQQTransportStatus,
   ActorQQConversation,
   ActorRuntimeStatus,
+  ActorRuntimeTransition,
   ActorSettingsSnapshot,
   ActorSummary,
   ActorWebSearchConfig,
@@ -247,10 +248,27 @@ function qqDraftFromConfig(config?: ActorQQConfig): QqSettingsDraft {
 
 const activityStatusDescription: Record<ActorRuntimeStatus, string> = {
   offline: "角色未加载，不参与活动",
-  sleeping: "角色已加载，当前处于睡眠",
-  preparing: "角色状态变更中",
+  sleep: "角色已加载，当前处于睡眠",
   online: "角色已唤醒，当前在线",
   busy: "角色已唤醒，当前忙碌",
+};
+const activityTransitionDescription: Record<
+  Exclude<ActorRuntimeTransition, null>,
+  string
+> = {
+  booting: "角色正在启动",
+  shutting_down: "角色正在关闭",
+  waking: "角色正在唤醒",
+  sleeping: "角色正在入睡",
+};
+const activityTransitionLabel: Record<
+  Exclude<ActorRuntimeTransition, null>,
+  string
+> = {
+  booting: "启动中",
+  shutting_down: "关闭中",
+  waking: "唤醒中",
+  sleeping: "入睡中",
 };
 
 function actorAvatarText(name: string) {
@@ -669,18 +687,24 @@ export function ActorSettingsPanel({
   actor,
   showStartupTip = false,
   onStartupTipDismiss,
-  onActorStatusChange,
+  onActorRuntimeChange,
 }: {
   actor: ActorSummary;
   showStartupTip?: boolean;
   onStartupTipDismiss?: () => void;
-  onActorStatusChange: (actorId: string, status: ActorRuntimeStatus) => void;
+  onActorRuntimeChange: (
+    actorId: string,
+    status: ActorRuntimeStatus,
+    transition: ActorRuntimeTransition,
+  ) => void;
 }) {
   const actorId = actor.id;
   const actorName = actor.name;
   const [activityStatus, setActivityStatus] = useState<ActorRuntimeStatus>(
     actor.status,
   );
+  const [activityTransition, setActivityTransition] =
+    useState<ActorRuntimeTransition>(actor.transition);
   const [activitySwitching, setActivitySwitching] = useState(false);
   const [activityDisableDialogVisible, setActivityDisableDialogVisible] =
     useState(false);
@@ -849,8 +873,20 @@ export function ActorSettingsPanel({
     qqDraft,
     savedQqSettings,
   );
-  const activityPreparing = activityStatus === "preparing";
-  const activityEnabled = activityStatus !== "offline";
+  const activityTransitioning =
+    activitySwitching || activityTransition !== null;
+  const activityEnabled =
+    activityStatus !== "offline" ||
+    activityTransition === "booting" ||
+    activityTransition === "shutting_down";
+  const activityDescription = activityTransition
+    ? activityTransitionDescription[activityTransition]
+    : activityStatusDescription[activityStatus];
+  const activityButtonLabel = activityTransition
+    ? activityTransitionLabel[activityTransition]
+    : activityStatus === "offline"
+      ? "启动"
+      : "停用";
 
   useEffect(() => {
     return () => {
@@ -874,7 +910,8 @@ export function ActorSettingsPanel({
     }
 
     setActivityStatus(actor.status);
-  }, [actor.status, activitySwitching]);
+    setActivityTransition(actor.transition);
+  }, [actor.status, actor.transition, activitySwitching]);
 
   useEffect(() => {
     let cancelled = false;
@@ -958,35 +995,45 @@ export function ActorSettingsPanel({
   }
 
   async function toggleActorActivity() {
-    if (activitySwitching || activityPreparing) {
+    if (activityTransitioning) {
       return;
     }
 
     const previousStatus = activityStatus;
+    const previousTransition = activityTransition;
     const shouldEnable = activityStatus === "offline";
-    const optimisticStatus: ActorRuntimeStatus = "preparing";
+    const optimisticTransition: ActorRuntimeTransition = shouldEnable
+      ? "booting"
+      : "shutting_down";
 
     setActivitySwitching(true);
-    setActivityStatus(optimisticStatus);
-    onActorStatusChange(actorId, optimisticStatus);
+    setActivityTransition(optimisticTransition);
+    onActorRuntimeChange(actorId, previousStatus, optimisticTransition);
 
     try {
       const response = await updateActorActivity(actorId, shouldEnable);
       if (response.ok) {
         setActivityStatus(response.activity.status);
-        onActorStatusChange(actorId, response.activity.status);
+        setActivityTransition(response.activity.transition);
+        onActorRuntimeChange(
+          actorId,
+          response.activity.status,
+          response.activity.transition,
+        );
         showSettingsToast(
           shouldEnable ? "角色已启用" : "角色已停用",
           "success",
         );
       } else {
         setActivityStatus(previousStatus);
-        onActorStatusChange(actorId, previousStatus);
+        setActivityTransition(previousTransition);
+        onActorRuntimeChange(actorId, previousStatus, previousTransition);
         showSettingsToast("切换失败", "error");
       }
     } catch {
       setActivityStatus(previousStatus);
-      onActorStatusChange(actorId, previousStatus);
+      setActivityTransition(previousTransition);
+      onActorRuntimeChange(actorId, previousStatus, previousTransition);
       showSettingsToast("切换失败", "error");
     } finally {
       setActivitySwitching(false);
@@ -1665,10 +1712,10 @@ export function ActorSettingsPanel({
               className={`${styles.actorSettingsMenuItem} ${styles.actorSettingsSwitchItem} ${styles.actorActivitySwitchItem}`}
               role="switch"
               aria-checked={activityEnabled}
-              aria-label="启用角色"
-              disabled={activitySwitching || activityPreparing}
+              aria-label={activityButtonLabel}
+              disabled={activityTransitioning}
               onClick={() => {
-                if (activityPreparing) {
+                if (activityTransitioning) {
                   return;
                 }
 
@@ -1683,15 +1730,15 @@ export function ActorSettingsPanel({
               <span className={styles.actorSettingsMenuIcon}>
                 <ActorActivityStatusIcon
                   status={activityStatus}
-                  switching={activitySwitching}
+                  transition={activityTransition}
                 />
               </span>
               <span className={styles.actorSettingsMenuText}>
-                <span className={styles.actorSettingsMenuTitle}>启用</span>
+                <span className={styles.actorSettingsMenuTitle}>
+                  {activityButtonLabel}
+                </span>
                 <span className={styles.actorSettingsMenuDescription}>
-                  {activitySwitching
-                    ? activityStatusDescription.preparing
-                    : activityStatusDescription[activityStatus]}
+                  {activityDescription}
                 </span>
               </span>
               <span
@@ -1722,7 +1769,7 @@ export function ActorSettingsPanel({
                     <button
                       type="button"
                       className={styles.llmUnsavedDangerButton}
-                      disabled={activitySwitching || activityPreparing}
+                      disabled={activityTransitioning}
                       onClick={() => {
                         void toggleActorActivity();
                       }}
@@ -1938,12 +1985,12 @@ function ActorSettingsMenuItemIcon({ name }: { name: ActorSettingsMenuIcon }) {
 
 function ActorActivityStatusIcon({
   status,
-  switching,
+  transition,
 }: {
   status: ActorRuntimeStatus;
-  switching: boolean;
+  transition: ActorRuntimeTransition;
 }) {
-  if (switching || status === "preparing") {
+  if (transition !== null) {
     return (
       <LoaderCircle
         className={styles.actorActivityIcon_preparing}
@@ -1961,7 +2008,7 @@ function ActorActivityStatusIcon({
     );
   }
 
-  if (status === "sleeping") {
+  if (status === "sleep") {
     return (
       <Moon className={styles.actorActivityIcon_sleeping} aria-hidden="true" />
     );

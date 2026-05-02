@@ -9,14 +9,14 @@ type PersistedActor = ActorEntity & { id: number };
 function createRuntime(
   options: {
     status?: "sleep" | "awake" | "switching";
-    preparing?: boolean;
+    transition?: "waking" | "sleeping" | null;
     busy?: boolean;
     startBootInit?: () => Promise<void>;
   } = {},
 ) {
   return {
     getStatus: vi.fn(() => options.status ?? "sleep"),
-    isPreparing: vi.fn(() => options.preparing ?? false),
+    getTransition: vi.fn(() => options.transition ?? null),
     isBusy: vi.fn(() => options.busy ?? false),
     startBootInit: vi.fn(options.startBootInit ?? (async () => {})),
   };
@@ -114,13 +114,18 @@ describe("RuntimeController", () => {
     expect(snapshot).toMatchObject({
       actorId: 1,
       enabled: true,
-      status: "sleeping",
+      status: "sleep",
+      transition: null,
     });
     expect(fixture.events.map((event) => event.data)).toEqual([
-      expect.objectContaining({ reason: "enable:start", status: "preparing" }),
+      expect.objectContaining({
+        reason: "enable:start",
+        transition: "booting",
+      }),
       expect.objectContaining({
         reason: "enable:accepted",
-        status: "sleeping",
+        status: "sleep",
+        transition: null,
       }),
     ]);
   });
@@ -149,20 +154,25 @@ describe("RuntimeController", () => {
     const snapshot = await fixture.controller.getSnapshot(1);
 
     expect(snapshot.status).toBe("online");
+    expect(snapshot.transition).toBeNull();
     expect(runtime.isBusy).not.toHaveBeenCalled();
   });
 
-  test("rejects runtime switches while the actor is preparing", async () => {
+  test("maps actor switching direction and rejects runtime switches during it", async () => {
     const fixture = createFixture({
       enabled: true,
-      runtime: createRuntime({ status: "switching", preparing: true }),
+      runtime: createRuntime({ status: "switching", transition: "waking" }),
     });
 
+    await expect(fixture.controller.getSnapshot(1)).resolves.toMatchObject({
+      status: "sleep",
+      transition: "waking",
+    });
     await expect(fixture.controller.enable(1)).rejects.toThrow(
-      "cannot be enabled from preparing",
+      "cannot be enabled from sleep/waking",
     );
     await expect(fixture.controller.disable(1)).rejects.toThrow(
-      "cannot be disabled from preparing",
+      "cannot be disabled from sleep/waking",
     );
 
     expect(fixture.actorDB.upsertActor).not.toHaveBeenCalled();
@@ -200,15 +210,18 @@ describe("RuntimeController", () => {
       actorId: 1,
       enabled: false,
       status: "offline",
+      transition: null,
     });
     expect(fixture.events.map((event) => event.data)).toEqual([
       expect.objectContaining({
         reason: "disable:start",
-        status: "preparing",
+        status: "online",
+        transition: "shutting_down",
       }),
       expect.objectContaining({
         reason: "disable:complete",
         status: "offline",
+        transition: null,
       }),
     ]);
   });
@@ -230,7 +243,11 @@ describe("RuntimeController", () => {
     expect(fixture.actorRegistry.unload).toHaveBeenCalledWith(1);
     expect(fixture.channelRegistry.removeActorChannels).toHaveBeenCalledWith(1);
     expect(fixture.events.at(-1)?.data).toEqual(
-      expect.objectContaining({ reason: "enable:rollback", status: "offline" }),
+      expect.objectContaining({
+        reason: "enable:rollback",
+        status: "offline",
+        transition: null,
+      }),
     );
   });
 
@@ -253,7 +270,11 @@ describe("RuntimeController", () => {
       1,
     );
     expect(fixture.events.at(-1)?.data).toEqual(
-      expect.objectContaining({ reason: "disable:rollback", status: "online" }),
+      expect.objectContaining({
+        reason: "disable:rollback",
+        status: "online",
+        transition: null,
+      }),
     );
   });
 });

@@ -7,6 +7,7 @@ import type {
 } from "ema";
 import type {
   ActorRuntimeStatus,
+  ActorRuntimeTransition,
   ActorSummary,
   DashboardOverviewResponse,
   DashboardUserProfile,
@@ -27,6 +28,12 @@ export function toWebRuntimeStatus(
   return status;
 }
 
+export function toWebRuntimeTransition(
+  transition: ActorRuntimeSnapshot["transition"],
+): ActorRuntimeTransition {
+  return transition;
+}
+
 export function toActorSummary(
   details: ActorDetails,
   options: {
@@ -38,6 +45,7 @@ export function toActorSummary(
     id: toWebActorId(details.actor.id),
     name: details.roleName,
     status: toWebRuntimeStatus(details.runtime.status),
+    transition: toWebRuntimeTransition(details.runtime.transition),
     ...(details.latestPreview
       ? {
           latestPreview: {

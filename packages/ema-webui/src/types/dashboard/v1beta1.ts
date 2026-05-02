@@ -1,9 +1,14 @@
 export type ActorRuntimeStatus =
   | "offline"
-  | "sleeping"
-  | "preparing"
+  | "sleep"
   | "online"
   | "busy";
+export type ActorRuntimeTransition =
+  | "booting"
+  | "shutting_down"
+  | "waking"
+  | "sleeping"
+  | null;
 export type ActorLlmProvider = "google" | "openai";
 export type ActorOpenAiMode = "responses" | "chat";
 export type ActorSettingsCheckStatus = "passed" | "failed";
@@ -46,6 +51,7 @@ export interface ActorSummary {
   id: string;
   name: string;
   status: ActorRuntimeStatus;
+  transition: ActorRuntimeTransition;
   latestPreview?: {
     text: string;
     time: number;
@@ -56,6 +62,7 @@ export interface ActorSummary {
 export interface ActorActivityState {
   enabled: boolean;
   status: ActorRuntimeStatus;
+  transition: ActorRuntimeTransition;
   switching: boolean;
   updatedAt: string;
 }

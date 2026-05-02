@@ -16,15 +16,21 @@ import type { MessageReplyRef } from "../channel";
 
 export type ActorRuntimeStatus =
   | "offline"
-  | "preparing"
-  | "sleeping"
+  | "sleep"
   | "online"
   | "busy";
+export type ActorRuntimeTransition =
+  | "booting"
+  | "shutting_down"
+  | "waking"
+  | "sleeping"
+  | null;
 
 export interface ActorRuntimeSnapshot {
   actorId: number;
   enabled: boolean;
   status: ActorRuntimeStatus;
+  transition: ActorRuntimeTransition;
   updatedAt: number;
 }
 

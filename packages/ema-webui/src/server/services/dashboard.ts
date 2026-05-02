@@ -6,6 +6,7 @@ import {
   toDashboardOverviewResponse,
   toDashboardUserProfile,
   toWebRuntimeStatus,
+  toWebRuntimeTransition,
 } from "@/server/ema-adapter/dashboard";
 import {
   DEFAULT_OWNER_USER_ID,
@@ -461,7 +462,8 @@ export async function updateActorActivityService(
       activity: {
         enabled: snapshot.enabled,
         status: toWebRuntimeStatus(snapshot.status),
-        switching: false,
+        transition: toWebRuntimeTransition(snapshot.transition),
+        switching: snapshot.transition !== null,
         updatedAt: new Date(snapshot.updatedAt).toISOString(),
       },
     };
@@ -473,6 +475,7 @@ export async function updateActorActivityService(
       activity: {
         enabled: false,
         status: "offline",
+        transition: null,
         switching: false,
         updatedAt: now(),
       },

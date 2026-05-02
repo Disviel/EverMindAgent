@@ -91,3 +91,4 @@ export type ActorWorkerEventsEmitter = EventEmitter<ActorWorkerEventMap> &
 export type ActorWorkerStatus = "preparing" | "running" | "idle";
 
 export type ActorStatus = "sleep" | "switching" | "awake";
+export type ActorTransition = "waking" | "sleeping" | null;

@@ -1,6 +1,10 @@
 import type { Server } from "../server";
 import type { ActorEntity } from "../db";
-import type { ActorRuntimeSnapshot, ActorRuntimeStatus } from "./types";
+import type {
+  ActorRuntimeSnapshot,
+  ActorRuntimeStatus,
+  ActorRuntimeTransition,
+} from "./types";
 
 type PersistedActor = ActorEntity & { id: number };
 
@@ -8,6 +12,10 @@ export class RuntimeController {
   private readonly runtimeOperations = new Map<
     number,
     Promise<ActorRuntimeSnapshot>
+  >();
+  private readonly manualTransitions = new Map<
+    number,
+    Exclude<ActorRuntimeTransition, null | "waking" | "sleeping">
   >();
 
   constructor(private readonly server: Server) {}
@@ -19,7 +27,11 @@ export class RuntimeController {
     return {
       actorId,
       enabled,
-      status: toRuntimeStatus(enabled, runtime),
+      ...toRuntimeState(
+        enabled,
+        runtime,
+        this.manualTransitions.get(actorId) ?? null,
+      ),
       updatedAt: Date.now(),
     };
   }
@@ -32,24 +44,26 @@ export class RuntimeController {
     return await this.runLocked(actorId, async () => {
       const actor = await this.requireActor(actorId);
       const current = await this.getSnapshot(actorId);
-      if (current.status !== "offline") {
+      if (current.status !== "offline" || current.transition !== null) {
         throw new Error(
-          `Actor ${actorId} runtime cannot be enabled from ${current.status}.`,
+          `Actor ${actorId} runtime cannot be enabled from ${formatRuntimeState(current)}.`,
         );
       }
 
-      await this.server.dbService.actorDB.upsertActor({
-        ...actor,
-        enabled: true,
-      });
-      await this.publishStatus(actorId, "enable:start", "preparing");
+      this.manualTransitions.set(actorId, "booting");
 
       try {
+        await this.server.dbService.actorDB.upsertActor({
+          ...actor,
+          enabled: true,
+        });
+        await this.publishStatus(actorId, "enable:start");
         const runtime = await this.server.actorRegistry.ensure(actorId);
         await this.server.gateway.channelRegistry.refreshActorChannels(actorId);
         await runtime.startBootInit();
+        this.manualTransitions.delete(actorId);
         const snapshot = await this.getSnapshot(actorId);
-        await this.publishStatus(actorId, "enable:accepted", snapshot.status);
+        await this.publishStatus(actorId, "enable:accepted");
         return snapshot;
       } catch (error) {
         await this.rollbackEnable(actor);
@@ -62,27 +76,30 @@ export class RuntimeController {
     return await this.runLocked(actorId, async () => {
       const actor = await this.requireActor(actorId);
       const current = await this.getSnapshot(actorId);
-      if (current.status === "offline" || current.status === "preparing") {
+      if (current.status === "offline" || current.transition !== null) {
         throw new Error(
-          `Actor ${actorId} runtime cannot be disabled from ${current.status}.`,
+          `Actor ${actorId} runtime cannot be disabled from ${formatRuntimeState(current)}.`,
         );
       }
 
-      await this.server.dbService.actorDB.upsertActor({
-        ...actor,
-        enabled: false,
-      });
-      await this.publishStatus(actorId, "disable:start", "preparing");
+      this.manualTransitions.set(actorId, "shutting_down");
 
       try {
+        await this.server.dbService.actorDB.upsertActor({
+          ...actor,
+          enabled: false,
+        });
+        await this.publishStatus(actorId, "disable:start", current.status);
         await this.server.actorRegistry.unload(actorId);
         await this.server.gateway.channelRegistry.removeActorChannels(actorId);
+        this.manualTransitions.delete(actorId);
         const snapshot = await this.getSnapshot(actorId);
-        await this.publishStatus(actorId, "disable:complete", "offline");
+        await this.publishStatus(actorId, "disable:complete");
         return {
           ...snapshot,
           enabled: false,
           status: "offline",
+          transition: null,
         };
       } catch (error) {
         await this.rollbackDisable(actor);
@@ -95,11 +112,16 @@ export class RuntimeController {
     actorId: number,
     reason?: string,
     explicitStatus?: ActorRuntimeStatus,
+    explicitTransition?: ActorRuntimeTransition,
   ): Promise<void> {
-    const snapshot = explicitStatus
+    const snapshot =
+      explicitStatus !== undefined || explicitTransition !== undefined
       ? {
           ...(await this.getSnapshot(actorId)),
-          status: explicitStatus,
+          ...(explicitStatus !== undefined ? { status: explicitStatus } : {}),
+          ...(explicitTransition !== undefined
+            ? { transition: explicitTransition }
+            : {}),
         }
       : await this.getSnapshot(actorId);
     this.server.bus.publish(
@@ -146,7 +168,8 @@ export class RuntimeController {
     });
     await this.server.actorRegistry.unload(actor.id);
     await this.server.gateway.channelRegistry.removeActorChannels(actor.id);
-    await this.publishStatus(actor.id, "enable:rollback", "offline");
+    this.manualTransitions.delete(actor.id);
+    await this.publishStatus(actor.id, "enable:rollback");
   }
 
   private async rollbackDisable(actor: PersistedActor): Promise<void> {
@@ -158,24 +181,37 @@ export class RuntimeController {
       await this.server.actorRegistry.ensure(actor.id);
       await this.server.gateway.channelRegistry.refreshActorChannels(actor.id);
     } finally {
+      this.manualTransitions.delete(actor.id);
       await this.publishStatus(actor.id, "disable:rollback");
     }
   }
 }
 
-function toRuntimeStatus(
+function toRuntimeState(
   enabled: boolean,
   runtime: ReturnType<Server["actorRegistry"]["get"]> | null,
-): ActorRuntimeStatus {
+  manualTransition: ActorRuntimeTransition,
+): Pick<ActorRuntimeSnapshot, "status" | "transition"> {
   if (!enabled || !runtime) {
-    return "offline";
+    return {
+      status: "offline",
+      transition: manualTransition,
+    };
   }
   const status = runtime.getStatus();
-  if (runtime.isPreparing() || status === "switching") {
-    return "preparing";
-  }
+  const actorTransition = runtime.getTransition();
+  const transition = manualTransition ?? actorTransition;
   if (status === "sleep") {
-    return "sleeping";
+    return { status: "sleep", transition };
   }
-  return "online";
+  if (status === "switching" && actorTransition === "waking") {
+    return { status: "sleep", transition };
+  }
+  return { status: "online", transition };
+}
+
+function formatRuntimeState(snapshot: ActorRuntimeSnapshot): string {
+  return snapshot.transition
+    ? `${snapshot.status}/${snapshot.transition}`
+    : snapshot.status;
 }

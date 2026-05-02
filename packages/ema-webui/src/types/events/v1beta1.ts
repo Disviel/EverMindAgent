@@ -3,6 +3,7 @@ import type {
   ActorQQBlockedBy,
   ActorQQTransportStatus,
   ActorRuntimeStatus,
+  ActorRuntimeTransition,
   ActorSummary,
 } from "@/types/dashboard/v1beta1";
 
@@ -36,6 +37,7 @@ export interface ActorUpdatedEventData {
 
 export interface ActorRuntimeChangedEventData {
   status: ActorRuntimeStatus;
+  transition: ActorRuntimeTransition;
 }
 
 export interface ActorLatestPreviewEventData {

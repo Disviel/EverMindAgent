@@ -71,6 +71,10 @@ function toActorRuntimeChangedEvent(
   if (!isRuntimeStatus(status)) {
     return null;
   }
+  const transition = readString(event.data, "transition");
+  if (!isRuntimeTransition(transition)) {
+    return null;
+  }
   return {
     type: "actor.runtime.changed",
     ts: event.ts,
@@ -79,6 +83,7 @@ function toActorRuntimeChangedEvent(
       : {}),
     data: {
       status,
+      transition,
     } satisfies ActorRuntimeChangedEventData,
   };
 }
@@ -134,7 +139,8 @@ function isActorDetails(value: unknown): value is ActorDetails {
     typeof value.actor.id === "number" &&
     typeof value.roleName === "string" &&
     isRecord(value.runtime) &&
-    isRuntimeStatus(value.runtime.status)
+    isRuntimeStatus(value.runtime.status) &&
+    isRuntimeTransition(value.runtime.transition)
   );
 }
 
@@ -143,10 +149,21 @@ function isRuntimeStatus(
 ): value is ActorRuntimeSnapshot["status"] {
   return (
     value === "offline" ||
-    value === "preparing" ||
-    value === "sleeping" ||
+    value === "sleep" ||
     value === "online" ||
     value === "busy"
+  );
+}
+
+function isRuntimeTransition(
+  value: unknown,
+): value is ActorRuntimeSnapshot["transition"] {
+  return (
+    value === null ||
+    value === "booting" ||
+    value === "shutting_down" ||
+    value === "waking" ||
+    value === "sleeping"
   );
 }
 
