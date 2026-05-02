@@ -124,9 +124,9 @@ export class SettingsController {
   }
 
   async saveLlmConfig(actorId: number, config: LLMConfig): Promise<LLMConfig> {
-    const probe = await this.probeLlmConfig(config);
-    if (!probe.ok) {
-      throw new Error(probe.message);
+    const invalidMessage = validateLlmSaveConfig(config);
+    if (invalidMessage) {
+      throw new Error(invalidMessage);
     }
     const actor = await this.requireActor(actorId);
     await this.server.dbService.actorDB.upsertActor({
@@ -192,6 +192,13 @@ function validateLlmProbeConfig(config: LLMConfig): string | null {
   return !config.google.baseUrl.trim() || !config.google.apiKey.trim()
     ? "LLM config is incomplete."
     : null;
+}
+
+function validateLlmSaveConfig(config: LLMConfig): string | null {
+  if (config.provider === "openai" && config.openai.mode !== "responses") {
+    return "OpenAI Chat Completions mode is not supported yet.";
+  }
+  return validateLlmProbeConfig(config);
 }
 
 function validateEmbeddingProbeConfig(config: EmbeddingConfig): string | null {

@@ -22,9 +22,7 @@ import { createEvent, publishEvent } from "@/server/events/bus";
 import {
   getActorRecord,
   listActorSummaries,
-  saveActorLlmSettings,
   saveActorQqSettings,
-  saveActorWebSearchSettings,
 } from "@/server/store/actors";
 import { getQqConnection, qqConnectionResponse } from "@/server/store/qq";
 import type {
@@ -61,8 +59,6 @@ import type {
 } from "@/types/dashboard/v1beta1";
 
 const API_VERSION = "v1beta1" as const;
-const LLM_SAVE_PASS_RATE = 0.82;
-const WEB_SEARCH_SAVE_PASS_RATE = 0.86;
 const QQ_SAVE_PASS_RATE = 0.86;
 const EMPTY_QQ_CONFIG: ActorQQConfig = {
   enabled: false,
@@ -94,15 +90,6 @@ function hostFromUrl(value: string) {
     return new URL(value).host;
   } catch {
     return value || null;
-  }
-}
-
-function isHttpUrl(value: string) {
-  try {
-    const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch {
-    return false;
   }
 }
 
@@ -171,13 +158,54 @@ export async function buildActorSettingsResponse(
     llm: toWebLlmConfig(globalDefaults.llm),
     webSearch: toWebSearchConfig(globalDefaults.webSearch),
   };
+
+  let coreActorId: number | null = null;
+  try {
+    coreActorId = toCoreActorId(actorId);
+  } catch {
+    coreActorId = null;
+  }
+
+  if (coreActorId !== null) {
+    const actor = await server.dbService.actorDB.getActor(coreActorId);
+    if (!actor) {
+      return {
+        apiVersion: API_VERSION,
+        actorId,
+        settings: {
+          qq: { ...EMPTY_QQ_CONFIG, conversations: [] },
+        },
+        global,
+      };
+    }
+
+    const qqConversations =
+      await server.controller.channel.listQqConversations(coreActorId);
+    const settings: ActorSettingsSnapshot = {
+      ...(actor.llmConfig ? { llm: toWebLlmConfig(actor.llmConfig) } : {}),
+      ...(actor.webSearchConfig
+        ? { webSearch: toWebSearchConfig(actor.webSearchConfig) }
+        : {}),
+      qq: toWebQqConfig(
+        actor.channelConfig?.qq ?? EMPTY_CORE_QQ_CONFIG,
+        qqConversations,
+      ),
+    };
+    return {
+      apiVersion: API_VERSION,
+      actorId,
+      settings,
+      global,
+    };
+  }
+
+  // Legacy mock actor ids are kept only until QQ is migrated in Step 3.7.
   const existingActor = await getActorRecord(actorId);
   if (existingActor) {
     return {
       apiVersion: API_VERSION,
       actorId,
       settings: {
-        ...existingActor.settings,
         qq: {
           ...existingActor.settings.qq,
           conversations: existingActor.settings.qq.conversations.map(
@@ -189,35 +217,12 @@ export async function buildActorSettingsResponse(
     };
   }
 
-  const coreActorId = toCoreActorId(actorId);
-  const actor = await server.dbService.actorDB.getActor(coreActorId);
-  if (!actor) {
-    return {
-      apiVersion: API_VERSION,
-      actorId,
-      settings: {
-          qq: { ...EMPTY_QQ_CONFIG, conversations: [] },
-      },
-      global,
-    };
-  }
-
-  const qqConversations =
-    await server.controller.channel.listQqConversations(coreActorId);
-  const settings: ActorSettingsSnapshot = {
-    ...(actor.llmConfig ? { llm: toWebLlmConfig(actor.llmConfig) } : {}),
-    ...(actor.webSearchConfig
-      ? { webSearch: toWebSearchConfig(actor.webSearchConfig) }
-      : {}),
-    qq: toWebQqConfig(
-      actor.channelConfig?.qq ?? EMPTY_CORE_QQ_CONFIG,
-      qqConversations,
-    ),
-  };
   return {
     apiVersion: API_VERSION,
     actorId,
-    settings,
+    settings: {
+      qq: { ...EMPTY_QQ_CONFIG, conversations: [] },
+    },
     global,
   };
 }
@@ -488,44 +493,6 @@ export async function updateActorActivityService(
   }
 }
 
-function validateActorLlmConfig(config: ActorLlmConfig): {
-  code: Extract<ActorSettingsCheckErrorCode, "INVALID_CONFIG" | "UNSUPPORTED">;
-  details: ActorSettingsDiagnostics;
-} | null {
-  if (config.provider === "openai" && config.openai.mode !== "responses") {
-    return {
-      code: "UNSUPPORTED",
-      details: {
-        issuePaths: ["llm.openai.mode"],
-        issueCodes: ["unsupported"],
-      },
-    };
-  }
-
-  const selected = selectedLlmConfig(config);
-  const issuePaths: string[] = [];
-  if (!selected.model.trim() || selected.model.trim().length > 128) {
-    issuePaths.push(`llm.${config.provider}.model`);
-  }
-  if (!selected.baseUrl.trim() || !isHttpUrl(selected.baseUrl.trim())) {
-    issuePaths.push(`llm.${config.provider}.baseUrl`);
-  }
-  if (!selected.apiKey.trim()) {
-    issuePaths.push(`llm.${config.provider}.apiKey`);
-  }
-
-  return issuePaths.length === 0
-    ? null
-    : {
-        code: "INVALID_CONFIG",
-        details: {
-          issueCount: issuePaths.length,
-          issuePaths,
-          issueCodes: issuePaths.map(() => "required"),
-        },
-      };
-}
-
 function createActorLlmCheckResponse({
   actorId,
   startedAt,
@@ -627,6 +594,34 @@ function classifyActorLlmProbeError(message: string): ActorSettingsCheckErrorCod
   return networkLike ? "LLM_NETWORK_ERROR" : "LLM_PROVIDER_ERROR";
 }
 
+function llmSaveDiagnostics(config: ActorLlmConfig): ActorSettingsDiagnostics {
+  const selected = selectedLlmConfig(config);
+  return {
+    provider: config.provider,
+    model: selected.model,
+    endpoint:
+      config.provider === "google" && config.google.useVertexAi
+        ? "vertex-ai"
+        : hostFromUrl(selected.baseUrl),
+    storage: "ema-actor-config",
+  };
+}
+
+function isInvalidSettingsError(message: string) {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("required") ||
+    normalized.includes("incomplete") ||
+    normalized.includes("not supported") ||
+    normalized.includes("unsupported") ||
+    normalized.includes("invalid")
+  );
+}
+
+function messageFromError(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export async function runActorLlmServiceCheck(
   actorId: string,
   request: ActorLlmCheckRequest,
@@ -674,31 +669,51 @@ export async function saveActorLlmServiceConfig(
   request: ActorLlmSaveRequest,
 ): Promise<ActorLlmSaveResponse> {
   const startedAt = now();
-  await sleep(randomInt(420, 760));
-  const invalid = validateActorLlmConfig(request.config);
-  const selected = selectedLlmConfig(request.config);
-  const ok =
-    !invalid &&
-    shouldMockSaveSucceed(LLM_SAVE_PASS_RATE) &&
-    (await saveActorLlmSettings(actorId, request.config));
-  if (ok) {
-    await publishActorUpdated(actorId);
+  const config = request.config;
+  if (!config) {
+    return createSaveResponse({
+      target: "llm",
+      actorId,
+      startedAt,
+      ok: false,
+      errorCode: "INVALID_CONFIG",
+      errorDetails: {
+        issuePaths: ["llm"],
+        issueCodes: ["required"],
+      },
+      diagnostics: {},
+    }) as ActorLlmSaveResponse;
   }
 
-  return createSaveResponse({
-    target: "llm",
-    actorId,
-    startedAt,
-    ok: Boolean(ok),
-    errorCode: invalid ? "INVALID_CONFIG" : "DATABASE_WRITE_FAILED",
-    errorDetails: invalid?.details,
-    diagnostics: {
-      provider: request.config.provider,
-      model: selected.model,
-      endpoint: hostFromUrl(selected.baseUrl),
-      storage: "mock-settings-store",
-    },
-  }) as ActorLlmSaveResponse;
+  try {
+    const server = await ensureEmaServer();
+    await server.controller.settings.saveLlmConfig(
+      toCoreActorId(actorId),
+      config,
+    );
+    return createSaveResponse({
+      target: "llm",
+      actorId,
+      startedAt,
+      ok: true,
+      diagnostics: llmSaveDiagnostics(config),
+    }) as ActorLlmSaveResponse;
+  } catch (error) {
+    const message = messageFromError(error);
+    return createSaveResponse({
+      target: "llm",
+      actorId,
+      startedAt,
+      ok: false,
+      errorCode: isInvalidSettingsError(message)
+        ? "INVALID_CONFIG"
+        : "DATABASE_WRITE_FAILED",
+      errorDetails: {
+        message,
+      },
+      diagnostics: llmSaveDiagnostics(config),
+    }) as ActorLlmSaveResponse;
+  }
 }
 
 export async function saveActorWebSearchServiceConfig(
@@ -706,34 +721,62 @@ export async function saveActorWebSearchServiceConfig(
   request: ActorWebSearchSaveRequest,
 ): Promise<ActorWebSearchSaveResponse> {
   const startedAt = now();
-  await sleep(randomInt(320, 640));
-  const invalid =
-    request.config.enabled && request.config.tavilyApiKey.trim().length === 0;
-  const ok =
-    !invalid &&
-    shouldMockSaveSucceed(WEB_SEARCH_SAVE_PASS_RATE) &&
-    (await saveActorWebSearchSettings(actorId, request.config));
-  if (ok) {
-    await publishActorUpdated(actorId);
+  const config = request.config;
+  if (!config) {
+    return createSaveResponse({
+      target: "webSearch",
+      actorId,
+      startedAt,
+      ok: false,
+      errorCode: "INVALID_CONFIG",
+      errorDetails: {
+        issuePaths: ["webSearch"],
+        issueCodes: ["required"],
+      },
+      diagnostics: {},
+    }) as ActorWebSearchSaveResponse;
   }
 
-  return createSaveResponse({
-    target: "webSearch",
-    actorId,
-    startedAt,
-    ok: Boolean(ok),
-    errorCode: invalid ? "INVALID_CONFIG" : "DATABASE_WRITE_FAILED",
-    errorDetails: invalid
-      ? {
-          issuePaths: ["webSearch.tavilyApiKey"],
-          issueCodes: ["required"],
-        }
-      : undefined,
-    diagnostics: {
-      enabled: request.config.enabled,
-      storage: "mock-settings-store",
-    },
-  }) as ActorWebSearchSaveResponse;
+  try {
+    const server = await ensureEmaServer();
+    await server.controller.settings.saveWebSearchConfig(
+      toCoreActorId(actorId),
+      config,
+    );
+    return createSaveResponse({
+      target: "webSearch",
+      actorId,
+      startedAt,
+      ok: true,
+      diagnostics: {
+        enabled: config.enabled,
+        storage: "ema-actor-config",
+      },
+    }) as ActorWebSearchSaveResponse;
+  } catch (error) {
+    const message = messageFromError(error);
+    const invalid = isInvalidSettingsError(message);
+    return createSaveResponse({
+      target: "webSearch",
+      actorId,
+      startedAt,
+      ok: false,
+      errorCode: invalid ? "INVALID_CONFIG" : "DATABASE_WRITE_FAILED",
+      errorDetails: {
+        ...(invalid
+          ? {
+              issuePaths: ["webSearch.tavilyApiKey"],
+              issueCodes: ["required"],
+            }
+          : {}),
+        message,
+      },
+      diagnostics: {
+        enabled: config.enabled,
+        storage: "ema-actor-config",
+      },
+    }) as ActorWebSearchSaveResponse;
+  }
 }
 
 function validateQqConfig(config: ActorQQConfig) {
