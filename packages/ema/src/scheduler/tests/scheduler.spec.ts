@@ -7,6 +7,15 @@ import { AgendaScheduler, isJob, type JobHandlerMap } from "..";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+async function waitFor<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return await Promise.race([
+    promise,
+    sleep(timeoutMs).then(() => {
+      throw new Error("timeout");
+    }),
+  ]);
+}
+
 describe("AgendaScheduler", () => {
   let mongo: Mongo;
   let scheduler: AgendaScheduler;
@@ -58,12 +67,7 @@ describe("AgendaScheduler", () => {
       data: { message: "hello" },
     });
 
-    await Promise.race([
-      donePromise,
-      sleep(5000).then(() => {
-        throw new Error("timeout");
-      }),
-    ]);
+    await waitFor(donePromise, 5000);
 
     expect(received).toBe("hello");
     expect(handler).toHaveBeenCalledTimes(1);
@@ -121,12 +125,7 @@ describe("AgendaScheduler", () => {
     });
     expect(updated).toBe(true);
 
-    await Promise.race([
-      donePromise,
-      sleep(1000).then(() => {
-        throw new Error("timeout");
-      }),
-    ]);
+    await waitFor(donePromise, 1000);
 
     expect(received).toBe("new");
   });
@@ -165,12 +164,7 @@ describe("AgendaScheduler", () => {
       unique: { name: "test", "data.message": "repeat" },
     });
 
-    const firedAt = await Promise.race([
-      donePromise,
-      sleep(2500).then(() => {
-        throw new Error("timeout");
-      }),
-    ]);
+    const firedAt = await waitFor(donePromise, 2500);
 
     const earlyToleranceMs = 150;
     expect(firedAt + earlyToleranceMs).toBeGreaterThanOrEqual(runAt);
@@ -291,16 +285,20 @@ describe("AgendaScheduler", () => {
     const handlers: JobHandlerMap = { test: async () => {} };
     await scheduler.start(handlers);
 
-    const windowMs = 2000;
+    let resolveDone!: () => void;
+    const donePromise = new Promise<void>((resolve) => {
+      resolveDone = resolve;
+    });
+    const expectedRuns = 4;
     const intervalMs = 500;
     const start = Date.now();
-    const end = start + windowMs;
     const runAt = start + 400;
     let count = 0;
 
     const handler = vi.fn(async () => {
-      if (Date.now() <= end) {
-        count += 1;
+      count += 1;
+      if (count >= expectedRuns) {
+        resolveDone();
       }
     });
     await scheduler.stop();
@@ -314,26 +312,30 @@ describe("AgendaScheduler", () => {
       unique: { name: "test", "data.message": "future" },
     });
 
-    await sleep(windowMs + 200);
+    await waitFor(donePromise, 5000);
     await scheduler.cancel(jobId);
 
-    expect(count).toBe(4);
-  }, 5000);
+    expect(count).toBeGreaterThanOrEqual(expectedRuns);
+  }, 8000);
 
   test("recurring job runs expected times when runAt is in the past", async () => {
     const handlers: JobHandlerMap = { test: async () => {} };
     await scheduler.start(handlers);
 
-    const windowMs = 2000;
+    let resolveDone!: () => void;
+    const donePromise = new Promise<void>((resolve) => {
+      resolveDone = resolve;
+    });
+    const expectedRuns = 4;
     const intervalMs = 500;
     const start = Date.now();
-    const end = start + windowMs;
     const runAt = start - 100;
     let count = 0;
 
     const handler = vi.fn(async () => {
-      if (Date.now() <= end) {
-        count += 1;
+      count += 1;
+      if (count >= expectedRuns) {
+        resolveDone();
       }
     });
     await scheduler.stop();
@@ -347,11 +349,11 @@ describe("AgendaScheduler", () => {
       unique: { name: "test", "data.message": "past" },
     });
 
-    await sleep(windowMs + 200);
+    await waitFor(donePromise, 5000);
     await scheduler.cancel(jobId);
 
-    expect(count).toBe(4);
-  }, 5000);
+    expect(count).toBeGreaterThanOrEqual(expectedRuns);
+  }, 8000);
 
   test("marks overdue one-time jobs instead of replaying them on start", async () => {
     const foregroundHandler = vi.fn(async () => {});

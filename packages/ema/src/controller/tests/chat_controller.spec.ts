@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 
 import { EmaBus } from "../../bus";
+import type { ConversationEntity } from "../../db";
 import { ChatController } from "../chat_controller";
 
 function createFixture() {
@@ -11,9 +12,9 @@ function createFixture() {
         id: 1,
         actorId: 1,
         session: "web-chat-1",
-        name: "Web Chat",
+        name: "和Owner的网页聊天",
         description: "",
-        allowProactive: false,
+        allowProactive: true,
       },
     ],
     [
@@ -65,9 +66,38 @@ function createFixture() {
             (item) => item.actorId === actorId && item.session === session,
           ) ?? null,
       ),
+      createConversation: vi.fn(
+        async (
+          actorId: number,
+          session: string,
+          name: string,
+          description: string,
+          allowProactive: boolean,
+        ) => {
+          const conversation = {
+            id: conversations.size + 1,
+            actorId,
+            session,
+            name,
+            description,
+            allowProactive,
+          };
+          conversations.set(conversation.id, conversation);
+          return conversation;
+        },
+      ),
       conversationDB: {
         getConversation: vi.fn(async (conversationId: number) => {
           return conversations.get(conversationId) ?? null;
+        }),
+        upsertConversation: vi.fn(async (conversation: ConversationEntity) => {
+          const id = conversation.id ?? conversations.size + 1;
+          conversations.set(id, {
+            ...conversation,
+            id,
+            allowProactive: conversation.allowProactive ?? false,
+          });
+          return id;
         }),
       },
       conversationMessageDB: {
@@ -153,6 +183,33 @@ describe("ChatController stream", () => {
       type: "typing.changed",
       conversationId: 2,
       typing: false,
+    });
+  });
+
+  test("ensures the default web conversation without overwriting saved metadata", async () => {
+    const { controller } = createFixture();
+
+    const conversation = await controller.ensureWebConversation(1, 1, "Owner");
+
+    expect(conversation).toMatchObject({
+      id: 1,
+      name: "和Owner的网页聊天",
+      description: "",
+      allowProactive: true,
+    });
+  });
+
+  test("creates missing web conversations with the owner name and proactive enabled", async () => {
+    const { controller } = createFixture();
+
+    const conversation = await controller.ensureWebConversation(2, 1, "Owner");
+
+    expect(conversation).toMatchObject({
+      actorId: 2,
+      session: "web-chat-1",
+      name: "和Owner的网页聊天",
+      description: "",
+      allowProactive: true,
     });
   });
 });

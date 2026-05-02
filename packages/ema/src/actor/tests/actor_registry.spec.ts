@@ -59,9 +59,11 @@ describe("ActorRegistry", () => {
           1,
           "web-chat-1",
         );
-      expect(conversation?.description).toBe(
-        "这是你和你的拥有者之间在网页端私聊的对话。",
-      );
+      expect(conversation).toMatchObject({
+        name: "和alice的网页聊天",
+        description: "",
+        allowProactive: true,
+      });
     } finally {
       await mongo.close();
       await lance.close();

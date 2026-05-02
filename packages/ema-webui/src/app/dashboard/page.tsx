@@ -242,6 +242,7 @@ function DashboardContent() {
   const [layoutState, setLayoutState] = useState<DashboardLayoutState>(
     getInitialDashboardLayout,
   );
+  const firstDashboardEntryRef = useRef<boolean | null>(null);
   const [layoutStorageReady, setLayoutStorageReady] = useState(false);
   const [resizingTarget, setResizingTarget] =
     useState<LayoutResizeTarget | null>(null);
@@ -396,8 +397,12 @@ function DashboardContent() {
   );
 
   useEffect(() => {
-    const isFirstDashboardEntry =
-      window.sessionStorage.getItem(DASHBOARD_FIRST_LOGIN_STORAGE_KEY) === "1";
+    if (firstDashboardEntryRef.current === null) {
+      firstDashboardEntryRef.current =
+        window.sessionStorage.getItem(DASHBOARD_FIRST_LOGIN_STORAGE_KEY) ===
+        "1";
+    }
+    const isFirstDashboardEntry = firstDashboardEntryRef.current;
     if (isFirstDashboardEntry) {
       window.sessionStorage.removeItem(DASHBOARD_FIRST_LOGIN_STORAGE_KEY);
       window.localStorage.clear();
@@ -1039,6 +1044,7 @@ function DashboardContent() {
               onActiveTabChange={setActorInfoActiveTab}
               renderSettings={() => (
                 <ActorSettingsPanel
+                  key={activeActor.id}
                   actor={activeActor}
                   showStartupTip={
                     startupTipActorId === activeActor.id &&

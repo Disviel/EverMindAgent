@@ -93,11 +93,40 @@ export class RemoteMongo extends Mongo {
 
     const pathStart = beforeQuery.indexOf("/", authorityStart + 3);
     if (pathStart === -1) {
-      return `${beforeQuery}/${this.dbName}${query}`;
+      return `${beforeQuery}/${this.dbName}${withDefaultAuthSource(
+        query,
+        beforeQuery,
+      )}`;
     }
     if (beforeQuery.slice(pathStart) === "/") {
-      return `${beforeQuery.slice(0, pathStart)}/${this.dbName}${query}`;
+      return `${beforeQuery.slice(0, pathStart)}/${this.dbName}${withDefaultAuthSource(
+        query,
+        beforeQuery,
+      )}`;
     }
     return this.uri;
   }
+}
+
+function withDefaultAuthSource(query: string, beforeQuery: string): string {
+  if (!hasCredentials(beforeQuery) || hasAuthSource(query)) {
+    return query;
+  }
+  return query ? `${query}&authSource=admin` : "?authSource=admin";
+}
+
+function hasCredentials(beforeQuery: string): boolean {
+  const authorityStart = beforeQuery.indexOf("://");
+  if (authorityStart === -1) {
+    return false;
+  }
+  const authority = beforeQuery.slice(authorityStart + 3);
+  return authority.includes("@");
+}
+
+function hasAuthSource(query: string): boolean {
+  if (!query) {
+    return false;
+  }
+  return new URLSearchParams(query.slice(1)).has("authSource");
 }

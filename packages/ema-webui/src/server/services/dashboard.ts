@@ -8,7 +8,11 @@ import {
   toWebRuntimeStatus,
   toWebRuntimeTransition,
 } from "@/server/ema-adapter/dashboard";
-import { DEFAULT_OWNER_USER_ID, toCoreActorId } from "@/server/ema-adapter/ids";
+import {
+  DEFAULT_OWNER_USER_ID,
+  DEFAULT_WEB_SESSION,
+  toCoreActorId,
+} from "@/server/ema-adapter/ids";
 import {
   toWebEmbeddingConfig,
   toWebEmbeddingIndexStatus,
@@ -23,6 +27,11 @@ import { ensureEmaServer } from "@/server/ema-server";
 import type {
   ActorActivityUpdateRequest,
   ActorActivityUpdateResponse,
+  ActorConversationInfo,
+  ActorConversationMutationResponse,
+  ActorConversationPatchRequest,
+  ActorConversationResponse,
+  ActorConversationSaveRequest,
   ActorListResponse,
   ActorLlmCheckRequest,
   ActorLlmCheckResponse,
@@ -78,6 +87,14 @@ const EMPTY_CORE_QQ_CONFIG = {
   enabled: false,
   wsUrl: "",
   accessToken: "",
+};
+type EmaServer = Awaited<ReturnType<typeof ensureEmaServer>>;
+type CoreConversationForWeb = {
+  id?: number;
+  session: string;
+  name: string;
+  description: string;
+  allowProactive?: boolean;
 };
 
 function now() {
@@ -366,6 +383,103 @@ export async function buildActorSettingsResponse(
   };
 }
 
+export async function buildActorConversationResponse(
+  actorId: string,
+  session: string,
+): Promise<ActorConversationResponse> {
+  const server = await ensureEmaServer();
+  const conversation = await getOrEnsureActorConversation(
+    server,
+    toCoreActorId(actorId),
+    session,
+  );
+  return {
+    apiVersion: API_VERSION,
+    actorId,
+    conversation: toWebActorConversation(conversation),
+  };
+}
+
+export async function saveActorConversationService(
+  actorId: string,
+  session: string,
+  request: Partial<ActorConversationSaveRequest>,
+): Promise<ActorConversationMutationResponse> {
+  const name = request.conversation?.name?.trim() ?? "";
+  if (!name) {
+    return actorConversationError(
+      actorId,
+      "INVALID_CONFIG",
+      "name is required",
+    );
+  }
+
+  try {
+    const server = await ensureEmaServer();
+    const coreActorId = toCoreActorId(actorId);
+    await getOrEnsureActorConversation(server, coreActorId, session);
+    const updated = await server.controller.chat.updateConversation(
+      coreActorId,
+      session,
+      {
+        name,
+        description: request.conversation?.description?.trim() ?? "",
+      },
+    );
+    return {
+      apiVersion: API_VERSION,
+      ok: true,
+      actorId,
+      conversation: toWebActorConversation(updated),
+    };
+  } catch (error) {
+    return actorConversationError(
+      actorId,
+      classifyActorConversationError(error),
+      messageFromError(error),
+    );
+  }
+}
+
+export async function patchActorConversationService(
+  actorId: string,
+  session: string,
+  request: Partial<ActorConversationPatchRequest>,
+): Promise<ActorConversationMutationResponse> {
+  if (typeof request.patch?.allowProactive !== "boolean") {
+    return actorConversationError(
+      actorId,
+      "INVALID_CONFIG",
+      "allowProactive must be boolean",
+    );
+  }
+
+  try {
+    const server = await ensureEmaServer();
+    const coreActorId = toCoreActorId(actorId);
+    await getOrEnsureActorConversation(server, coreActorId, session);
+    const updated = await server.controller.chat.updateConversation(
+      coreActorId,
+      session,
+      {
+        allowProactive: request.patch.allowProactive,
+      },
+    );
+    return {
+      apiVersion: API_VERSION,
+      ok: true,
+      actorId,
+      conversation: toWebActorConversation(updated),
+    };
+  } catch (error) {
+    return actorConversationError(
+      actorId,
+      classifyActorConversationError(error),
+      messageFromError(error),
+    );
+  }
+}
+
 export async function buildActorQqChannelResponse(
   actorId: string,
 ): Promise<ActorQQChannelResponse> {
@@ -614,6 +728,33 @@ function classifyQqConversationError(
   return "INVALID_CONFIG";
 }
 
+function classifyActorConversationError(
+  error: unknown,
+): NonNullable<ActorConversationMutationResponse["error"]>["code"] {
+  const message = messageFromError(error).toLowerCase();
+  if (message.includes("not found")) {
+    return "CONVERSATION_NOT_FOUND";
+  }
+  return "INVALID_CONFIG";
+}
+
+function actorConversationError(
+  actorId: string,
+  code: NonNullable<ActorConversationMutationResponse["error"]>["code"],
+  message: string,
+): ActorConversationMutationResponse {
+  return {
+    apiVersion: API_VERSION,
+    ok: false,
+    actorId,
+    error: {
+      code,
+      retryable: code === "CONVERSATION_NOT_FOUND",
+      message,
+    },
+  };
+}
+
 function toCoreConversationId(conversationId: string): number | null {
   const parsed = Number.parseInt(conversationId, 10);
   if (
@@ -624,6 +765,37 @@ function toCoreConversationId(conversationId: string): number | null {
     return null;
   }
   return parsed;
+}
+
+async function getOrEnsureActorConversation(
+  server: EmaServer,
+  actorId: number,
+  session: string,
+) {
+  if (session === DEFAULT_WEB_SESSION) {
+    const owner = await server.dbService.getDefaultUser();
+    return await server.controller.chat.ensureWebConversation(
+      actorId,
+      owner?.id ?? DEFAULT_OWNER_USER_ID,
+      owner?.name ?? "你",
+    );
+  }
+  return await server.controller.chat.getConversation(actorId, session);
+}
+
+function toWebActorConversation(
+  conversation: CoreConversationForWeb,
+): ActorConversationInfo {
+  if (typeof conversation.id !== "number") {
+    throw new Error("Conversation is missing id.");
+  }
+  return {
+    id: String(conversation.id),
+    session: conversation.session,
+    name: conversation.name,
+    description: conversation.description,
+    allowProactive: conversation.allowProactive ?? false,
+  };
 }
 
 export async function createActorService(

@@ -43,9 +43,12 @@ import styles from "@/app/dashboard/page.module.css";
 import {
   createActorQqConversation,
   deleteActorQqConversation,
+  getActorConversation,
   getActorSettings,
+  patchActorConversation,
   patchActorQqConversation,
   runActorLlmCheck,
+  saveActorConversation,
   saveActorLlmConfig,
   saveActorQqConfig,
   saveActorWebSearchConfig,
@@ -62,6 +65,7 @@ import {
 } from "@/types/dashboard/feedback";
 import type {
   ActorLlmConfig,
+  ActorConversationInfo,
   ActorQQBlockedBy,
   ActorQQConfig,
   ActorQQConnectionSyncReason,
@@ -76,6 +80,7 @@ import type {
 
 type ActorSettingsMenuIcon =
   | "llm"
+  | "conversation"
   | "search"
   | "sticker"
   | "qq"
@@ -130,6 +135,14 @@ interface QqSettingsDraft {
   conversations: QqConversationDraft[];
 }
 
+interface ConversationSettingsDraft {
+  id: string;
+  session: string;
+  name: string;
+  description: string;
+  allowProactive: boolean;
+}
+
 interface QqConversationEditorState {
   mode: "create" | "edit";
   draft: QqConversationDraft;
@@ -142,6 +155,7 @@ const useIsomorphicLayoutEffect =
 const MESSAGE_SCROLLBAR_IDLE_DELAY = 3000;
 const MESSAGE_SCROLLBAR_MIN_THUMB_HEIGHT = 32;
 const COPY_TOAST_DURATION = 1400;
+const DEFAULT_WEB_CHAT_SESSION = "web-chat-1";
 
 const LLM_PROVIDER_OPTIONS: Array<{
   id: LlmProvider;
@@ -197,6 +211,13 @@ const DEFAULT_QQ_SETTINGS: QqSettingsDraft = {
   accessToken: "",
   conversations: [],
 };
+const DEFAULT_CONVERSATION_SETTINGS: ConversationSettingsDraft = {
+  id: "",
+  session: DEFAULT_WEB_CHAT_SESSION,
+  name: "",
+  description: "",
+  allowProactive: true,
+};
 
 function llmDraftFromConfig(config?: ActorLlmConfig): LlmSettingsDraft {
   if (!config) {
@@ -244,6 +265,20 @@ function qqDraftFromConfig(config?: ActorQQConfig): QqSettingsDraft {
         })),
       }
     : DEFAULT_QQ_SETTINGS;
+}
+
+function conversationDraftFromInfo(
+  conversation?: ActorConversationInfo,
+): ConversationSettingsDraft {
+  return conversation
+    ? {
+        id: conversation.id,
+        session: conversation.session,
+        name: conversation.name,
+        description: conversation.description,
+        allowProactive: conversation.allowProactive,
+      }
+    : DEFAULT_CONVERSATION_SETTINGS;
 }
 
 const activityStatusDescription: Record<ActorRuntimeStatus, string> = {
@@ -319,6 +354,27 @@ function areQqConversationsEqual(
     left.description === right.description &&
     left.allowProactive === right.allowProactive
   );
+}
+
+function areConversationSettingsEqual(
+  left: ConversationSettingsDraft,
+  right: ConversationSettingsDraft,
+) {
+  return (
+    left.name === right.name &&
+    left.description === right.description &&
+    left.allowProactive === right.allowProactive
+  );
+}
+
+function validateConversationDraftBeforeSave(draft: ConversationSettingsDraft) {
+  if (!draft.name.trim()) {
+    return {
+      summary: "会话名称不能为空",
+      fields: ["name"] as const,
+    };
+  }
+  return null;
 }
 
 function getLlmProviderOption(provider: LlmProvider) {
@@ -770,12 +826,26 @@ export function ActorSettingsPanel({
   const [qqTransportStatus, setQqTransportStatus] =
     useState<ActorQQTransportStatus>("disconnected");
   const [qqUnsavedDialogVisible, setQqUnsavedDialogVisible] = useState(false);
+  const [savedConversationSettings, setSavedConversationSettings] =
+    useState<ConversationSettingsDraft>(DEFAULT_CONVERSATION_SETTINGS);
+  const [conversationDraft, setConversationDraft] =
+    useState<ConversationSettingsDraft>(DEFAULT_CONVERSATION_SETTINGS);
+  const [conversationValidationFeedback, setConversationValidationFeedback] =
+    useState<ReturnType<typeof validateConversationDraftBeforeSave>>(null);
+  const [conversationIsSaving, setConversationIsSaving] = useState(false);
+  const [conversationIsSwitching, setConversationIsSwitching] = useState(false);
+  const [
+    conversationUnsavedDialogVisible,
+    setConversationUnsavedDialogVisible,
+  ] = useState(false);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const llmTestRunRef = useRef(0);
   const llmSaveRunRef = useRef(0);
   const webSearchSaveRunRef = useRef(0);
   const qqSaveRunRef = useRef(0);
   const qqSwitchRunRef = useRef(0);
+  const conversationSaveRunRef = useRef(0);
+  const conversationSwitchRunRef = useRef(0);
   const settingsScrollRef = useRef<HTMLDivElement>(null);
   const settingsScrollbarVisibleRef = useRef(false);
   const settingsScrollbarIdleTimerRef = useRef<ReturnType<
@@ -876,6 +946,10 @@ export function ActorSettingsPanel({
     qqDraft,
     savedQqSettings,
   );
+  const conversationSettingsDirty = !areConversationSettingsEqual(
+    conversationDraft,
+    savedConversationSettings,
+  );
   const activityTransitioning =
     activitySwitching || activityTransition !== null;
   const activityEnabled =
@@ -890,6 +964,8 @@ export function ActorSettingsPanel({
     : activityStatus === "offline"
       ? "启动"
       : "停用";
+  const detailHeading =
+    detailTitle === "当前会话信息" ? detailTitle : `${detailTitle} 设置`;
 
   useEffect(() => {
     return () => {
@@ -927,8 +1003,14 @@ export function ActorSettingsPanel({
         : null,
     );
 
-    getActorSettings(actorId)
-      .then((response) => {
+    setSavedConversationSettings(DEFAULT_CONVERSATION_SETTINGS);
+    setConversationDraft(DEFAULT_CONVERSATION_SETTINGS);
+
+    Promise.all([
+      getActorSettings(actorId),
+      getActorConversation(actorId, DEFAULT_WEB_CHAT_SESSION),
+    ])
+      .then(([response, conversationResponse]) => {
         if (cancelled) {
           return;
         }
@@ -937,6 +1019,11 @@ export function ActorSettingsPanel({
           settings: response.settings,
         });
         setGlobalLlmConfig(response.global.llm);
+        const nextConversation = conversationDraftFromInfo(
+          conversationResponse.conversation,
+        );
+        setSavedConversationSettings(nextConversation);
+        setConversationDraft(nextConversation);
       })
       .catch(() => {
         if (!cancelled) {
@@ -966,6 +1053,9 @@ export function ActorSettingsPanel({
     setWebSearchValidationFeedback(null);
     setQqValidationFeedback(null);
     setQqIsSwitching(false);
+    setConversationValidationFeedback(null);
+    setConversationIsSaving(false);
+    setConversationIsSwitching(false);
     setQqTransportStatus(
       deriveQqConnectionState(nextQqSettings).transportStatus,
     );
@@ -1044,6 +1134,119 @@ export function ActorSettingsPanel({
     }
   }
 
+  async function saveConversationSettings() {
+    if (!conversationSettingsDirty || conversationIsSaving) {
+      return;
+    }
+
+    const validationFeedback =
+      validateConversationDraftBeforeSave(conversationDraft);
+    if (validationFeedback) {
+      setConversationValidationFeedback(validationFeedback);
+      return;
+    }
+
+    const saveDraft = conversationDraft;
+    const saveRunId = ++conversationSaveRunRef.current;
+    setConversationIsSaving(true);
+    setConversationValidationFeedback(null);
+
+    try {
+      const response = await saveActorConversation(
+        actorId,
+        DEFAULT_WEB_CHAT_SESSION,
+        {
+          name: saveDraft.name.trim(),
+          description: saveDraft.description.trim(),
+        },
+      );
+      if (saveRunId !== conversationSaveRunRef.current) {
+        return;
+      }
+
+      setConversationIsSaving(false);
+      if (response.ok && response.conversation) {
+        const nextConversation = conversationDraftFromInfo(
+          response.conversation,
+        );
+        setSavedConversationSettings(nextConversation);
+        setConversationDraft(nextConversation);
+        showSettingsToast("保存成功", "success");
+      } else {
+        showSettingsToast("保存失败", "error");
+      }
+    } catch {
+      if (saveRunId !== conversationSaveRunRef.current) {
+        return;
+      }
+      setConversationIsSaving(false);
+      showSettingsToast("保存失败", "error");
+    }
+  }
+
+  async function toggleConversationProactive() {
+    if (conversationIsSwitching || conversationIsSaving) {
+      return;
+    }
+
+    const previousSaved = savedConversationSettings;
+    const previousDraft = conversationDraft;
+    const nextAllowProactive = !previousSaved.allowProactive;
+    const switchRunId = ++conversationSwitchRunRef.current;
+
+    setConversationIsSwitching(true);
+    setSavedConversationSettings((current) => ({
+      ...current,
+      allowProactive: nextAllowProactive,
+    }));
+    setConversationDraft((current) => ({
+      ...current,
+      allowProactive: nextAllowProactive,
+    }));
+
+    try {
+      const response = await patchActorConversation(
+        actorId,
+        DEFAULT_WEB_CHAT_SESSION,
+        {
+          allowProactive: nextAllowProactive,
+        },
+      );
+      if (switchRunId !== conversationSwitchRunRef.current) {
+        return;
+      }
+      if (!response.ok || !response.conversation) {
+        throw new Error(
+          response.error?.message ?? "conversation switch failed",
+        );
+      }
+
+      const nextConversation = conversationDraftFromInfo(response.conversation);
+      setSavedConversationSettings(nextConversation);
+      setConversationDraft((current) => ({
+        ...current,
+        id: nextConversation.id,
+        session: nextConversation.session,
+        allowProactive: nextConversation.allowProactive,
+      }));
+      showSettingsToast(
+        nextAllowProactive ? "已启用主动对话" : "已停用主动对话",
+        "success",
+      );
+    } catch {
+      if (switchRunId !== conversationSwitchRunRef.current) {
+        return;
+      }
+      setSavedConversationSettings(previousSaved);
+      setConversationDraft(previousDraft);
+      showSettingsToast("切换失败", "error");
+    } finally {
+      if (switchRunId === conversationSwitchRunRef.current) {
+        setConversationIsSwitching(false);
+      }
+    }
+  }
+
   function openDetail(title: string) {
     if (closeTimerRef.current !== null) {
       clearTimeout(closeTimerRef.current);
@@ -1062,6 +1265,7 @@ export function ActorSettingsPanel({
     setLlmUnsavedDialogVisible(false);
     setWebSearchUnsavedDialogVisible(false);
     setQqUnsavedDialogVisible(false);
+    setConversationUnsavedDialogVisible(false);
     setActivityDisableDialogVisible(false);
     setDetailClosing(true);
     closeTimerRef.current = setTimeout(() => {
@@ -1084,6 +1288,11 @@ export function ActorSettingsPanel({
 
     if (detailTitle === "QQ" && qqSettingsDirty) {
       setQqUnsavedDialogVisible(true);
+      return;
+    }
+
+    if (detailTitle === "当前会话信息" && conversationSettingsDirty) {
+      setConversationUnsavedDialogVisible(true);
       return;
     }
 
@@ -1151,6 +1360,22 @@ export function ActorSettingsPanel({
     setQqDraft(nextDraft);
     setQqValidationFeedback(null);
     setQqIsSaving(false);
+  }
+
+  function discardConversationChangesAndClose() {
+    conversationSaveRunRef.current += 1;
+    setConversationDraft(savedConversationSettings);
+    setConversationValidationFeedback(null);
+    setConversationIsSaving(false);
+    setConversationUnsavedDialogVisible(false);
+    closeDetail();
+  }
+
+  function updateConversationDraft(nextDraft: ConversationSettingsDraft) {
+    conversationSaveRunRef.current += 1;
+    setConversationDraft(nextDraft);
+    setConversationValidationFeedback(null);
+    setConversationIsSaving(false);
   }
 
   async function testLlmConnection() {
@@ -1754,6 +1979,25 @@ export function ActorSettingsPanel({
               </span>
             </button>
 
+            <button
+              type="button"
+              className={styles.actorSettingsMenuItem}
+              onClick={() => openDetail("当前会话信息")}
+            >
+              <span className={styles.actorSettingsMenuIcon}>
+                <MessageSquareMore aria-hidden="true" />
+              </span>
+              <span className={styles.actorSettingsMenuText}>
+                <span className={styles.actorSettingsMenuTitle}>
+                  当前会话信息
+                </span>
+                <span className={styles.actorSettingsMenuDescription}>
+                  模型会根据信息理解会话的场景
+                </span>
+              </span>
+              <ChevronRight aria-hidden="true" />
+            </button>
+
             {activityDisableDialogVisible ? (
               <div className={styles.llmUnsavedOverlay} role="alertdialog">
                 <div className={styles.llmUnsavedDialog}>
@@ -1867,11 +2111,11 @@ export function ActorSettingsPanel({
           }`}
           role="dialog"
           aria-modal="false"
-          aria-label={`${detailTitle} 设置`}
+          aria-label={detailHeading}
         >
           <div className={styles.actorSettingsDetailHeader}>
             <div className={styles.actorSettingsDetailHeaderInner}>
-              <h3>{detailTitle} 设置</h3>
+              <h3>{detailHeading}</h3>
               <button
                 type="button"
                 className={styles.actorSettingsDetailClose}
@@ -1897,6 +2141,20 @@ export function ActorSettingsPanel({
               onSave={saveLlmSettings}
               onCancelClose={() => setLlmUnsavedDialogVisible(false)}
               onDiscardAndClose={discardLlmChangesAndClose}
+            />
+          ) : detailTitle === "当前会话信息" ? (
+            <ActorConversationSettingsDetail
+              draft={conversationDraft}
+              dirty={conversationSettingsDirty}
+              validationFeedback={conversationValidationFeedback}
+              isSaving={conversationIsSaving}
+              isSwitching={conversationIsSwitching}
+              unsavedDialogVisible={conversationUnsavedDialogVisible}
+              onDraftChange={updateConversationDraft}
+              onToggleProactive={toggleConversationProactive}
+              onSave={saveConversationSettings}
+              onCancelClose={() => setConversationUnsavedDialogVisible(false)}
+              onDiscardAndClose={discardConversationChangesAndClose}
             />
           ) : detailTitle === "搜索" ? (
             <ActorSearchSettingsDetail
@@ -1961,6 +2219,10 @@ export function ActorSettingsPanel({
 function ActorSettingsMenuItemIcon({ name }: { name: ActorSettingsMenuIcon }) {
   if (name === "llm") {
     return <Bot aria-hidden="true" />;
+  }
+
+  if (name === "conversation") {
+    return <MessageSquareMore aria-hidden="true" />;
   }
 
   if (name === "search") {
@@ -2037,6 +2299,175 @@ function ActorComingSoonSettingsDetail() {
         </div>
       </div>
     </div>
+  );
+}
+
+function ActorConversationSettingsDetail({
+  draft,
+  dirty,
+  validationFeedback,
+  isSaving,
+  isSwitching,
+  unsavedDialogVisible,
+  onDraftChange,
+  onToggleProactive,
+  onSave,
+  onCancelClose,
+  onDiscardAndClose,
+}: {
+  draft: ConversationSettingsDraft;
+  dirty: boolean;
+  validationFeedback: ReturnType<typeof validateConversationDraftBeforeSave>;
+  isSaving: boolean;
+  isSwitching: boolean;
+  unsavedDialogVisible: boolean;
+  onDraftChange: (draft: ConversationSettingsDraft) => void;
+  onToggleProactive: () => void | Promise<void>;
+  onSave: () => void | Promise<void>;
+  onCancelClose: () => void;
+  onDiscardAndClose: () => void;
+}) {
+  const nameInvalid = Boolean(validationFeedback?.fields.includes("name"));
+
+  function updateDraft(patch: Partial<ConversationSettingsDraft>) {
+    onDraftChange({
+      ...draft,
+      ...patch,
+    });
+  }
+
+  function handleDescriptionChange(
+    event: ReactChangeEvent<HTMLTextAreaElement>,
+  ) {
+    updateDraft({ description: event.currentTarget.value });
+  }
+
+  return (
+    <>
+      <div className={styles.llmSettingsBody}>
+        <div className={styles.llmSettingsContent}>
+          <section className={styles.searchIntroCard} aria-label="会话说明">
+            <div className={styles.searchIntroIcon} aria-hidden="true">
+              <Info />
+            </div>
+            <div className={styles.searchIntroContent}>
+              <p>模型会根据会话名称和描述理解当前聊天场景。</p>
+            </div>
+          </section>
+
+          <section
+            className={`${styles.llmSettingsSection} ${styles.llmSettingsSectionEnter}`}
+            aria-label="会话信息"
+          >
+            <div className={styles.llmSettingsFields}>
+              <label
+                className={`${styles.llmSettingsField} ${
+                  nameInvalid ? styles.llmSettingsFieldInvalid : ""
+                }`}
+              >
+                <span className={styles.llmSettingsControlTitle}>会话名称</span>
+                <input
+                  type="text"
+                  aria-invalid={nameInvalid ? true : undefined}
+                  value={draft.name}
+                  placeholder="和你的网页聊天"
+                  autoComplete="off"
+                  onChange={(event) =>
+                    updateDraft({ name: event.currentTarget.value })
+                  }
+                />
+              </label>
+
+              <label className={styles.llmSettingsField}>
+                <span className={styles.llmSettingsControlTitle}>描述</span>
+                <textarea
+                  className={styles.qqConversationTextarea}
+                  value={draft.description}
+                  placeholder="描述这个会话的场景、关系或用途"
+                  rows={4}
+                  onChange={handleDescriptionChange}
+                />
+              </label>
+
+              {validationFeedback ? (
+                <p className={styles.searchSettingsFieldHint} role="alert">
+                  {validationFeedback.summary}
+                </p>
+              ) : null}
+            </div>
+          </section>
+
+          <button
+            type="button"
+            className={`${styles.llmGlobalSwitch} ${
+              draft.allowProactive ? styles.llmGlobalSwitchOn : ""
+            }`}
+            role="switch"
+            aria-checked={draft.allowProactive}
+            aria-busy={isSwitching ? true : undefined}
+            disabled={isSwitching || isSaving}
+            onClick={() => {
+              void onToggleProactive();
+            }}
+          >
+            <span className={styles.llmSettingsItemText}>
+              <span className={styles.llmSettingsItemTitle}>启用主动对话</span>
+              <span className={styles.llmSettingsItemDescription}>
+                允许角色在该网页会话中主动发起或延续话题
+              </span>
+            </span>
+            <span
+              className={`${styles.actorSettingsSwitch} ${
+                draft.allowProactive ? styles.actorSettingsSwitchOn : ""
+              } ${isSwitching ? styles.actorSettingsSwitchLoading : ""}`}
+              aria-hidden="true"
+            >
+              <span className={styles.actorSettingsSwitchKnob}>
+                {isSwitching ? <LoaderCircle aria-hidden="true" /> : null}
+              </span>
+            </span>
+          </button>
+        </div>
+      </div>
+      <div className={styles.llmSettingsFooter}>
+        <div className={styles.llmSettingsFooterInner}>
+          <button
+            type="button"
+            className={`${styles.llmSaveButton} ${
+              isSaving ? styles.llmSaveButtonSaving : ""
+            }`}
+            disabled={!dirty || isSaving || isSwitching}
+            onClick={() => {
+              void onSave();
+            }}
+          >
+            {isSaving ? <LoaderCircle aria-hidden="true" /> : null}
+            <span>{isSaving ? "保存中" : "保存"}</span>
+          </button>
+        </div>
+      </div>
+
+      {unsavedDialogVisible ? (
+        <div className={styles.llmUnsavedOverlay} role="alertdialog">
+          <div className={styles.llmUnsavedDialog}>
+            <h4>放弃未保存的修改？</h4>
+            <p>当前会话信息还没有保存，退出后本次修改会被丢弃。</p>
+            <div className={styles.llmUnsavedActions}>
+              <button type="button" onClick={onCancelClose}>
+                继续编辑
+              </button>
+              <button
+                type="button"
+                className={styles.llmUnsavedDangerButton}
+                onClick={onDiscardAndClose}
+              >
+                仍要退出
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }
 

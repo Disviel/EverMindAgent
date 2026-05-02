@@ -26,6 +26,7 @@ import { Actor } from "../actor";
 function createActor(
   recurring: Array<{
     task: "wake" | "sleep";
+    interval?: string | number;
     lastRunAt?: string | null;
     nextRunAt?: string | null;
   }>,
@@ -59,7 +60,7 @@ function createActor(
           id: `job-${index + 1}`,
           type: "every" as const,
           task: item.task,
-          interval: "0 8 * * *",
+          interval: item.interval ?? "0 8 * * *",
           lastRunAt: item.lastRunAt ?? null,
           nextRunAt: item.nextRunAt ?? null,
           conversationId: null,
@@ -116,6 +117,56 @@ describe("Actor boot init", () => {
       addition: { reason: "boot_init", targetDayDate: "2026-04-22" },
     });
     expect(calls[1]![1].task).toBe("wake");
+  });
+
+  test("uses current clock to wake when outside the configured sleep window", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 3, 22, 10, 0, 0));
+    const { actor } = createActor([
+      {
+        task: "wake",
+        interval: "0 7 * * *",
+        lastRunAt: "2026-04-21 07:00:00",
+        nextRunAt: "2026-04-23 07:00:00",
+      },
+      {
+        task: "sleep",
+        interval: "0 23 * * *",
+        lastRunAt: "2026-04-21 23:00:00",
+        nextRunAt: "2026-04-22 23:00:00",
+      },
+    ]);
+
+    await actor.runBootInit();
+
+    const calls = runActorBackgroundJob.mock.calls as unknown as Array<
+      [unknown, { task: string }]
+    >;
+    expect(runActorBackgroundJob).toHaveBeenCalledTimes(1);
+    expect(calls[0]![1].task).toBe("wake");
+  });
+
+  test("uses current clock to stay asleep inside the configured sleep window", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 3, 22, 1, 0, 0));
+    const { actor } = createActor([
+      {
+        task: "wake",
+        interval: "0 7 * * *",
+        lastRunAt: "2026-04-21 07:00:00",
+        nextRunAt: "2026-04-22 07:00:00",
+      },
+      {
+        task: "sleep",
+        interval: "0 23 * * *",
+        lastRunAt: "2026-04-21 23:00:00",
+        nextRunAt: "2026-04-22 23:00:00",
+      },
+    ]);
+
+    await actor.runBootInit();
+
+    expect(runActorBackgroundJob).not.toHaveBeenCalled();
   });
 
   test("skips wake and rollup when the latest routine boundary is sleep and no old activity exists", async () => {

@@ -274,7 +274,11 @@ export class Actor {
     const sleepSchedule = listed.recurring.find(
       (item) => item.task === "sleep",
     );
-    const shouldWake = shouldBootInitWake(wakeSchedule, sleepSchedule);
+    const shouldWake = shouldBootInitWake(
+      wakeSchedule,
+      sleepSchedule,
+      triggeredAt,
+    );
     const targetDayDate = resolveBootInitTargetDayDate({
       shouldWake,
       wakeSchedule,
@@ -539,7 +543,24 @@ export class Actor {
 function shouldBootInitWake(
   wakeSchedule: ActorRecurringScheduleItem | undefined,
   sleepSchedule: ActorRecurringScheduleItem | undefined,
+  triggeredAt: number,
 ): boolean {
+  const wakeClockMinutes = resolveDailyCronClockMinutes(wakeSchedule?.interval);
+  const sleepClockMinutes = resolveDailyCronClockMinutes(
+    sleepSchedule?.interval,
+  );
+  if (
+    wakeClockMinutes !== null &&
+    sleepClockMinutes !== null &&
+    wakeClockMinutes !== sleepClockMinutes
+  ) {
+    return !isClockWithinSleepWindow(
+      getClockMinutes(triggeredAt),
+      sleepClockMinutes,
+      wakeClockMinutes,
+    );
+  }
+
   return (
     !wakeSchedule ||
     !sleepSchedule ||
@@ -555,6 +576,52 @@ function shouldBootInitWake(
             ? wakeSchedule.nextRunAt >= sleepSchedule.nextRunAt
             : true)
   );
+}
+
+function resolveDailyCronClockMinutes(
+  interval: ActorRecurringScheduleItem["interval"] | undefined,
+): number | null {
+  if (typeof interval !== "string") {
+    return null;
+  }
+  const parts = interval.trim().split(/\s+/);
+  if (
+    parts.length !== 5 ||
+    parts[2] !== "*" ||
+    parts[3] !== "*" ||
+    parts[4] !== "*"
+  ) {
+    return null;
+  }
+  const minute = Number(parts[0]);
+  const hour = Number(parts[1]);
+  if (
+    !Number.isInteger(minute) ||
+    !Number.isInteger(hour) ||
+    minute < 0 ||
+    minute > 59 ||
+    hour < 0 ||
+    hour > 23
+  ) {
+    return null;
+  }
+  return hour * 60 + minute;
+}
+
+function getClockMinutes(timestamp: number): number {
+  const time = new Date(timestamp);
+  return time.getHours() * 60 + time.getMinutes();
+}
+
+function isClockWithinSleepWindow(
+  clockMinutes: number,
+  sleepClockMinutes: number,
+  wakeClockMinutes: number,
+): boolean {
+  if (sleepClockMinutes < wakeClockMinutes) {
+    return clockMinutes >= sleepClockMinutes && clockMinutes < wakeClockMinutes;
+  }
+  return clockMinutes >= sleepClockMinutes || clockMinutes < wakeClockMinutes;
 }
 
 function resolveBootInitTargetDayDate({

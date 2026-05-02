@@ -1,5 +1,9 @@
 import type {
   ActorActivityUpdateResponse,
+  ActorConversationMutationResponse,
+  ActorConversationPatchRequest,
+  ActorConversationResponse,
+  ActorConversationSaveRequest,
   CreateActorRequest,
   CreateActorResponse,
   ActorLlmCheckResponse,
@@ -114,6 +118,45 @@ export function updateActorActivity(actorId: string, enabled: boolean) {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ enabled }),
+    },
+  );
+}
+
+export function getActorConversation(actorId: string, session: string) {
+  return fetchJson<ActorConversationResponse>(
+    `/api/v1beta1/actors/${encodeURIComponent(actorId)}/conversations/${encodeURIComponent(session)}`,
+    {
+      method: "GET",
+    },
+  );
+}
+
+export function saveActorConversation(
+  actorId: string,
+  session: string,
+  conversation: ActorConversationSaveRequest["conversation"],
+) {
+  return fetchJson<ActorConversationMutationResponse>(
+    `/api/v1beta1/actors/${encodeURIComponent(actorId)}/conversations/${encodeURIComponent(session)}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversation }),
+    },
+  );
+}
+
+export function patchActorConversation(
+  actorId: string,
+  session: string,
+  patch: ActorConversationPatchRequest["patch"],
+) {
+  return fetchJson<ActorConversationMutationResponse>(
+    `/api/v1beta1/actors/${encodeURIComponent(actorId)}/conversations/${encodeURIComponent(session)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ patch }),
     },
   );
 }

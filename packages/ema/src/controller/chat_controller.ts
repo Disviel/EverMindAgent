@@ -1,5 +1,5 @@
 import { buildSession } from "../channel";
-import type { ConversationMessageEntity } from "../db";
+import type { ConversationEntity, ConversationMessageEntity } from "../db";
 import type { InputContent } from "../shared/schema";
 import type { Server } from "../server";
 import type {
@@ -16,6 +16,11 @@ const DEFAULT_HISTORY_LIMIT = 80;
 const MAX_HISTORY_LIMIT = 200;
 const MAX_INLINE_IMAGES = 3;
 const MAX_INLINE_IMAGE_BYTES = 5 * 1024 * 1024;
+
+export function defaultWebConversationName(ownerName: string): string {
+  const name = ownerName.trim() || "你";
+  return `和${name}的网页聊天`;
+}
 
 export class ChatController {
   private readonly conversationListeners = new Map<
@@ -212,17 +217,55 @@ export class ChatController {
     ownerUserId: number,
     ownerName: string,
   ) {
+    const session = buildSession("web", "chat", String(ownerUserId));
+    const existing = await this.server.dbService.getConversationBySession(
+      actorId,
+      session,
+    );
+    if (existing && typeof existing.id === "number") {
+      return existing as typeof existing & { id: number };
+    }
+
     const conversation = await this.server.dbService.createConversation(
       actorId,
-      buildSession("web", "chat", String(ownerUserId)),
-      ownerName || "Web Chat",
-      "Default web conversation.",
-      false,
+      session,
+      defaultWebConversationName(ownerName),
+      "",
+      true,
     );
     if (typeof conversation.id !== "number") {
       throw new Error("Conversation is missing id after creation.");
     }
     return conversation as typeof conversation & { id: number };
+  }
+
+  async getConversation(actorId: number, session: string) {
+    return await this.requireConversation(actorId, session);
+  }
+
+  async updateConversation(
+    actorId: number,
+    session: string,
+    patch: Partial<
+      Pick<ConversationEntity, "name" | "description" | "allowProactive">
+    >,
+  ) {
+    const conversation = await this.requireConversation(actorId, session);
+    const id = await this.server.dbService.conversationDB.upsertConversation({
+      id: conversation.id,
+      actorId: conversation.actorId,
+      session: conversation.session,
+      name: patch.name ?? conversation.name,
+      description: patch.description ?? conversation.description,
+      allowProactive:
+        patch.allowProactive ?? conversation.allowProactive ?? false,
+    });
+    const updated =
+      await this.server.dbService.conversationDB.getConversation(id);
+    if (!updated || typeof updated.id !== "number") {
+      throw new Error(`Conversation ${session} not found after update.`);
+    }
+    return updated as typeof updated & { id: number };
   }
 
   private async requireConversation(actorId: number, session: string) {

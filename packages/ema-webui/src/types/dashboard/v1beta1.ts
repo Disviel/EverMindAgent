@@ -111,6 +111,42 @@ export interface ActorSettingsResponse {
   };
 }
 
+export interface ActorConversationInfo {
+  id: string;
+  session: string;
+  name: string;
+  description: string;
+  allowProactive: boolean;
+}
+
+export interface ActorConversationResponse {
+  apiVersion: "v1beta1";
+  actorId: string;
+  conversation: ActorConversationInfo;
+}
+
+export interface ActorConversationSaveRequest {
+  requestId?: string;
+  conversation: Pick<ActorConversationInfo, "name" | "description">;
+}
+
+export interface ActorConversationPatchRequest {
+  requestId?: string;
+  patch: Partial<Pick<ActorConversationInfo, "allowProactive">>;
+}
+
+export interface ActorConversationMutationResponse {
+  apiVersion: "v1beta1";
+  ok: boolean;
+  actorId: string;
+  conversation?: ActorConversationInfo;
+  error?: {
+    code: "INVALID_CONFIG" | "CONVERSATION_NOT_FOUND";
+    retryable: boolean;
+    message: string;
+  };
+}
+
 export interface CreateActorRequest {
   name: string;
   avatarUrl?: string;

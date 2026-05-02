@@ -1,7 +1,10 @@
 import { buildSession } from "../channel";
 import type { Server } from "../server";
 import type { ActorDetails, CreateActorInput } from "./types";
-import { previewFromContents } from "./chat_controller";
+import {
+  defaultWebConversationName,
+  previewFromContents,
+} from "./chat_controller";
 
 export class ActorController {
   constructor(private readonly server: Server) {}
@@ -22,12 +25,15 @@ export class ActorController {
       userId: input.ownerUserId,
       actorId,
     });
+    const ownerName = await this.server.dbService.getUserDisplayName(
+      input.ownerUserId,
+    );
     await this.server.dbService.createConversation(
       actorId,
       buildSession("web", "chat", String(input.ownerUserId)),
-      "Web Chat",
-      "Default web conversation.",
-      false,
+      defaultWebConversationName(ownerName),
+      "",
+      true,
     );
     await this.server.controller.schedule.updateSleepSchedule(
       actorId,

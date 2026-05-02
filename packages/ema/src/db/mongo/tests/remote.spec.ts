@@ -10,6 +10,16 @@ describe("RemoteMongo getUri", () => {
     expect(mongo.getUri()).toBe("mongodb://localhost:27017/ema_test");
   });
 
+  test("adds authSource admin when adding a database path to credential uris", () => {
+    const mongo = new RemoteMongo({
+      uri: "mongodb://user:pass@localhost:27017",
+      dbName: "ema_test",
+    });
+    expect(mongo.getUri()).toBe(
+      "mongodb://user:pass@localhost:27017/ema_test?authSource=admin",
+    );
+  });
+
   test("adds db name and preserves query parameters", () => {
     const mongo = new RemoteMongo({
       uri: "mongodb://localhost:27017/?retryWrites=true&replicaSet=rs0",
@@ -17,6 +27,16 @@ describe("RemoteMongo getUri", () => {
     });
     expect(mongo.getUri()).toBe(
       "mongodb://localhost:27017/ema_test?retryWrites=true&replicaSet=rs0",
+    );
+  });
+
+  test("preserves explicit authSource when adding a database path", () => {
+    const mongo = new RemoteMongo({
+      uri: "mongodb://user:pass@localhost:27017/?authSource=users&retryWrites=true",
+      dbName: "ema_test",
+    });
+    expect(mongo.getUri()).toBe(
+      "mongodb://user:pass@localhost:27017/ema_test?authSource=users&retryWrites=true",
     );
   });
 

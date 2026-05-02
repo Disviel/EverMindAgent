@@ -72,8 +72,8 @@ export async function createTestActorFixture(dbService: DBService) {
   return await dbService.createConversation(
     1,
     buildSession("web", "chat", "1"),
-    "Default",
-    "这是你和你的拥有者之间在网页端私聊的对话。",
-    false,
+    "和alice的网页聊天",
+    "",
+    true,
   );
 }
