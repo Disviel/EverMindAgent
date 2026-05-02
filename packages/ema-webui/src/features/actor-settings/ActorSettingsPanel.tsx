@@ -41,12 +41,16 @@ import {
 
 import styles from "@/app/dashboard/page.module.css";
 import {
+  createActorQqConversation,
+  deleteActorQqConversation,
   getActorSettings,
+  patchActorQqConversation,
   runActorLlmCheck,
   saveActorLlmConfig,
   saveActorQqConfig,
   saveActorWebSearchConfig,
   syncActorQqConnectionStatus,
+  updateActorQqEnabled,
   updateActorActivity,
 } from "@/transport/dashboard";
 import { subscribeEmaEvents } from "@/transport/events";
@@ -58,9 +62,10 @@ import {
 } from "@/types/dashboard/feedback";
 import type {
   ActorLlmConfig,
+  ActorQQBlockedBy,
   ActorQQConfig,
-  ActorQQConnectionStatus,
   ActorQQConnectionSyncReason,
+  ActorQQTransportStatus,
   ActorQQConversation,
   ActorRuntimeStatus,
   ActorSettingsSnapshot,
@@ -86,7 +91,6 @@ type LlmSettingsFieldId =
   | "model"
   | "baseUrl";
 type QqConversationType = "chat" | "group";
-type QqConnectionStatus = ActorQQConnectionStatus;
 type QqSettingsFieldId = "wsUrl" | "accessToken";
 type QqConversationFieldId = "uid" | "name";
 interface SettingsToastState {
@@ -282,11 +286,7 @@ function areQqConnectionSettingsEqual(
   left: QqSettingsDraft,
   right: QqSettingsDraft,
 ) {
-  return (
-    left.enabled === right.enabled &&
-    left.wsUrl === right.wsUrl &&
-    left.accessToken === right.accessToken
-  );
+  return left.wsUrl === right.wsUrl && left.accessToken === right.accessToken;
 }
 
 function areQqConversationsEqual(
@@ -320,6 +320,10 @@ function formatOpenAiEndpointMode(mode: LlmOpenAiEndpointMode) {
 
 function formatSecretStatus(value: string) {
   return value.trim() ? "已配置" : "未配置";
+}
+
+function messageFromError(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function buildGlobalLlmSummaryRows(config?: ActorLlmConfig | null) {
@@ -532,10 +536,6 @@ function isWsUrlValue(value: string) {
 }
 
 function validateQqDraftBeforeSave(settings: QqSettingsDraft) {
-  if (!settings.enabled) {
-    return null;
-  }
-
   const missingFields = [
     !settings.wsUrl.trim() ? "ws地址" : null,
     !settings.accessToken.trim() ? "token" : null,
@@ -544,7 +544,7 @@ function validateQqDraftBeforeSave(settings: QqSettingsDraft) {
   if (missingFields.length > 0) {
     return {
       summary: `${missingFields.join("、")}未填写`,
-      detail: "启用 NapCatQQ 后需要填写 ws 地址和 token。",
+      detail: "保存 NapCatQQ 连接配置需要填写 ws 地址和 token。",
       fields: [
         !settings.wsUrl.trim() ? "wsUrl" : null,
         !settings.accessToken.trim() ? "accessToken" : null,
@@ -621,6 +621,18 @@ function buildActorQqConfigFromDraft(settings: QqSettingsDraft): ActorQQConfig {
     wsUrl: settings.wsUrl.trim(),
     accessToken: settings.accessToken.trim(),
     conversations,
+  };
+}
+
+function buildActorQqConversationFromDraft(
+  conversation: QqConversationDraft,
+): Omit<ActorQQConversation, "id"> {
+  return {
+    type: conversation.type,
+    uid: conversation.uid.trim(),
+    name: conversation.name.trim(),
+    description: conversation.description.trim(),
+    allowProactive: conversation.allowProactive,
   };
 }
 
@@ -727,12 +739,16 @@ export function ActorSettingsPanel({
   const [qqValidationFeedback, setQqValidationFeedback] =
     useState<ReturnType<typeof validateQqDraftBeforeSave>>(null);
   const [qqIsSaving, setQqIsSaving] = useState(false);
+  const [qqIsSwitching, setQqIsSwitching] = useState(false);
+  const [qqTransportStatus, setQqTransportStatus] =
+    useState<ActorQQTransportStatus>("disconnected");
   const [qqUnsavedDialogVisible, setQqUnsavedDialogVisible] = useState(false);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const llmTestRunRef = useRef(0);
   const llmSaveRunRef = useRef(0);
   const webSearchSaveRunRef = useRef(0);
   const qqSaveRunRef = useRef(0);
+  const qqSwitchRunRef = useRef(0);
   const settingsScrollRef = useRef<HTMLDivElement>(null);
   const settingsScrollbarVisibleRef = useRef(false);
   const settingsScrollbarIdleTimerRef = useRef<ReturnType<
@@ -909,7 +925,18 @@ export function ActorSettingsPanel({
     setLlmConnectionFeedback(null);
     setWebSearchValidationFeedback(null);
     setQqValidationFeedback(null);
+    setQqIsSwitching(false);
+    setQqTransportStatus(
+      deriveQqConnectionState(nextQqSettings).transportStatus,
+    );
   }, [actor.id, actorSettings]);
+
+  const handleQqConnectionStateChange = useCallback(
+    (state: { transportStatus: ActorQQTransportStatus }) => {
+      setQqTransportStatus(state.transportStatus);
+    },
+    [],
+  );
 
   function showSettingsToast(
     message: string,
@@ -1238,7 +1265,7 @@ export function ActorSettingsPanel({
   }
 
   async function saveQqSettings() {
-    if (qqIsSaving) {
+    if (qqIsSaving || qqIsSwitching) {
       return false;
     }
 
@@ -1248,6 +1275,7 @@ export function ActorSettingsPanel({
 
     const saveDraft: QqSettingsDraft = {
       ...qqDraft,
+      enabled: savedQqSettings.enabled,
       conversations: savedQqSettings.conversations,
     };
     const validationFeedback = validateQqDraftBeforeSave(saveDraft);
@@ -1271,8 +1299,16 @@ export function ActorSettingsPanel({
 
       setQqIsSaving(false);
       if (response.ok) {
-        setQqDraft(saveDraft);
-        setSavedQqSettings(saveDraft);
+        setQqDraft((current) => ({
+          ...current,
+          wsUrl: saveDraft.wsUrl,
+          accessToken: saveDraft.accessToken,
+        }));
+        setSavedQqSettings((current) => ({
+          ...current,
+          wsUrl: saveDraft.wsUrl,
+          accessToken: saveDraft.accessToken,
+        }));
         showSettingsToast("保存成功", "success");
         return true;
       } else {
@@ -1290,6 +1326,85 @@ export function ActorSettingsPanel({
     }
   }
 
+  async function toggleQqEnabled() {
+    if (qqIsSwitching || qqIsSaving) {
+      return;
+    }
+
+    const previousSettings = savedQqSettings;
+    const nextEnabled = !previousSettings.enabled;
+    if (
+      nextEnabled &&
+      (!previousSettings.wsUrl.trim() || !previousSettings.accessToken.trim())
+    ) {
+      showSettingsToast("请先保存 ws 地址和 token", "error");
+      return;
+    }
+    const switchRunId = ++qqSwitchRunRef.current;
+
+    setQqIsSwitching(true);
+    setQqValidationFeedback(null);
+    setSavedQqSettings((current) => ({
+      ...current,
+      enabled: nextEnabled,
+    }));
+    setQqDraft((current) => ({
+      ...current,
+      enabled: nextEnabled,
+    }));
+
+    try {
+      const response = await updateActorQqEnabled(actorId, nextEnabled);
+      if (switchRunId !== qqSwitchRunRef.current) {
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(response.error?.message ?? "QQ enabled switch failed");
+      }
+
+      const nextSettings = qqDraftFromConfig(response.config);
+      setSavedQqSettings(nextSettings);
+      setQqDraft((current) => ({
+        ...current,
+        enabled: nextSettings.enabled,
+        conversations: nextSettings.conversations,
+      }));
+      showSettingsToast(
+        nextEnabled ? "NapCatQQ 已启用" : "NapCatQQ 已停用",
+        "success",
+      );
+    } catch (error) {
+      if (switchRunId !== qqSwitchRunRef.current) {
+        return;
+      }
+
+      setSavedQqSettings(previousSettings);
+      setQqDraft((current) => ({
+        ...current,
+        enabled: previousSettings.enabled,
+      }));
+      if (nextEnabled) {
+        setQqValidationFeedback({
+          summary: "无法启用 NapCatQQ",
+          detail:
+            previousSettings.wsUrl.trim() && previousSettings.accessToken.trim()
+              ? messageFromError(error)
+              : "请先保存 ws 地址和 token。",
+          fields: [
+            !previousSettings.wsUrl.trim() ? "wsUrl" : null,
+            !previousSettings.accessToken.trim() ? "accessToken" : null,
+          ].filter((field): field is QqSettingsFieldId => Boolean(field)),
+        });
+      }
+      showSettingsToast(nextEnabled ? "启用失败" : "停用失败", "error");
+    } finally {
+      if (switchRunId === qqSwitchRunRef.current) {
+        setQqIsSwitching(false);
+      }
+    }
+  }
+
   async function saveQqConversations(
     conversations: QqConversationDraft[],
     messages: {
@@ -1297,39 +1412,104 @@ export function ActorSettingsPanel({
       failure: string;
     },
   ) {
-    if (qqIsSaving) {
+    if (qqIsSaving || qqIsSwitching) {
       return false;
     }
 
-    const saveDraft: QqSettingsDraft = {
-      ...savedQqSettings,
-      conversations,
-    };
+    const previousConversations = savedQqSettings.conversations;
+    const createdConversations = conversations.filter(
+      (conversation) =>
+        !previousConversations.some((item) => item.id === conversation.id),
+    );
+    const deletedConversations = previousConversations.filter(
+      (conversation) =>
+        !conversations.some((item) => item.id === conversation.id),
+    );
+    const changedConversations = conversations.filter((conversation) => {
+      const previous = previousConversations.find(
+        (item) => item.id === conversation.id,
+      );
+      return previous && !areQqConversationsEqual(conversation, previous);
+    });
+    const mutationCount =
+      createdConversations.length +
+      deletedConversations.length +
+      changedConversations.length;
+
+    if (mutationCount === 0) {
+      return true;
+    }
+
+    if (mutationCount !== 1) {
+      showSettingsToast(messages.failure, "error");
+      return false;
+    }
+
     const saveRunId = ++qqSaveRunRef.current;
     setQqIsSaving(true);
 
     try {
-      const response = await saveActorQqConfig(
-        actorId,
-        buildActorQqConfigFromDraft(saveDraft),
-      );
+      let nextConversations = previousConversations;
+      if (createdConversations.length === 1) {
+        const response = await createActorQqConversation(
+          actorId,
+          buildActorQqConversationFromDraft(createdConversations[0]),
+        );
+        if (!response.ok || !response.conversation) {
+          throw new Error(response.error?.message ?? messages.failure);
+        }
+        nextConversations = [
+          ...previousConversations,
+          { ...response.conversation },
+        ];
+      } else if (changedConversations.length === 1) {
+        const changedConversation = changedConversations[0];
+        const response = await patchActorQqConversation(
+          actorId,
+          changedConversation.id,
+          {
+            name: changedConversation.name.trim(),
+            description: changedConversation.description.trim(),
+            allowProactive: changedConversation.allowProactive,
+          },
+        );
+        if (!response.ok || !response.conversation) {
+          throw new Error(response.error?.message ?? messages.failure);
+        }
+        nextConversations = previousConversations.map((conversation) =>
+          conversation.id === changedConversation.id
+            ? { ...response.conversation! }
+            : conversation,
+        );
+      } else if (deletedConversations.length === 1) {
+        const deletedConversation = deletedConversations[0];
+        const response = await deleteActorQqConversation(
+          actorId,
+          deletedConversation.id,
+        );
+        if (!response.ok) {
+          throw new Error(response.error?.message ?? messages.failure);
+        }
+        nextConversations = previousConversations.filter(
+          (conversation) => conversation.id !== deletedConversation.id,
+        );
+      }
+
       if (saveRunId !== qqSaveRunRef.current) {
         return false;
       }
 
       setQqIsSaving(false);
-      if (response.ok) {
-        setSavedQqSettings(saveDraft);
-        setQqDraft((current) => ({
-          ...current,
-          conversations,
-        }));
-        showSettingsToast(messages.success, "success");
-        return true;
-      }
-
-      showSettingsToast(messages.failure, "error");
-      return false;
+      setSavedQqSettings((current) => ({
+        ...current,
+        conversations: nextConversations,
+      }));
+      setQqDraft((current) => ({
+        ...current,
+        conversations: nextConversations,
+      }));
+      showSettingsToast(messages.success, "success");
+      return true;
     } catch {
       if (saveRunId !== qqSaveRunRef.current) {
         return false;
@@ -1468,7 +1648,7 @@ export function ActorSettingsPanel({
             {showStartupTip ? (
               <div className={styles.actorSettingsStartupTip} role="note">
                 <Info aria-hidden="true" />
-                <span>建议先配置服务与频道，再启用角色。</span>
+                <span>请先配置LLM服务再启动</span>
                 {onStartupTipDismiss ? (
                   <button
                     type="button"
@@ -1688,8 +1868,12 @@ export function ActorSettingsPanel({
               dirty={qqSettingsDirty}
               validationFeedback={qqValidationFeedback}
               isSaving={qqIsSaving}
+              isSwitching={qqIsSwitching}
+              isConnectionConnecting={qqTransportStatus === "connecting"}
               unsavedDialogVisible={qqUnsavedDialogVisible}
               onDraftChange={updateQqDraft}
+              onToggleEnabled={toggleQqEnabled}
+              onConnectionStateChange={handleQqConnectionStateChange}
               onSave={saveQqSettings}
               onSaveConversations={saveQqConversations}
               onCancelClose={() => setQqUnsavedDialogVisible(false)}
@@ -2527,8 +2711,12 @@ function ActorQqSettingsDetail({
   dirty,
   validationFeedback,
   isSaving,
+  isSwitching,
+  isConnectionConnecting,
   unsavedDialogVisible,
   onDraftChange,
+  onToggleEnabled,
+  onConnectionStateChange,
   onSave,
   onSaveConversations,
   onCancelClose,
@@ -2540,8 +2728,15 @@ function ActorQqSettingsDetail({
   dirty: boolean;
   validationFeedback: ReturnType<typeof validateQqDraftBeforeSave>;
   isSaving: boolean;
+  isSwitching: boolean;
+  isConnectionConnecting: boolean;
   unsavedDialogVisible: boolean;
   onDraftChange: (draft: QqSettingsDraft) => void;
+  onToggleEnabled: () => void | Promise<void>;
+  onConnectionStateChange: (state: {
+    transportStatus: ActorQQTransportStatus;
+    blockedBy: ActorQQBlockedBy;
+  }) => void;
   onSave: () => boolean | Promise<boolean>;
   onSaveConversations: (
     conversations: QqConversationDraft[],
@@ -2568,6 +2763,16 @@ function ActorQqSettingsDetail({
   const accessTokenInvalid = Boolean(
     validationFeedback?.fields.includes("accessToken"),
   );
+  const enableSwitchLocked =
+    !savedSettings.enabled &&
+    (!savedSettings.wsUrl.trim() || !savedSettings.accessToken.trim());
+  const switchDisabled =
+    isSaving || isSwitching || isConnectionConnecting || enableSwitchLocked;
+  const switchTitle = enableSwitchLocked
+    ? "请先保存 ws 地址和 token"
+    : isConnectionConnecting
+      ? "正在连接，暂不能切换"
+      : undefined;
   const deleteTarget =
     draft.conversations.find(
       (conversation) => conversation.id === deleteTargetId,
@@ -2850,21 +3055,30 @@ function ActorQqSettingsDetail({
             }`}
             role="switch"
             aria-checked={draft.enabled}
-            onClick={() => updateDraft({ enabled: !draft.enabled })}
+            aria-busy={isSwitching ? true : undefined}
+            disabled={switchDisabled}
+            title={switchTitle}
+            onClick={() => {
+              void onToggleEnabled();
+            }}
           >
             <span className={styles.llmSettingsItemText}>
               <span className={styles.llmSettingsItemTitle}>启用 NapCatQQ</span>
               <span className={styles.llmSettingsItemDescription}>
-                允许该角色通过 NapCatQQ 接收并响应 QQ 会话
+                {enableSwitchLocked
+                  ? "请先保存 ws 地址和 token"
+                  : "允许该角色通过 NapCatQQ 接收并响应 QQ 会话"}
               </span>
             </span>
             <span
               className={`${styles.actorSettingsSwitch} ${
                 draft.enabled ? styles.actorSettingsSwitchOn : ""
-              }`}
+              } ${isSwitching ? styles.actorSettingsSwitchLoading : ""}`}
               aria-hidden="true"
             >
-              <span className={styles.actorSettingsSwitchKnob} />
+              <span className={styles.actorSettingsSwitchKnob}>
+                {isSwitching ? <LoaderCircle aria-hidden="true" /> : null}
+              </span>
             </span>
           </button>
 
@@ -2919,6 +3133,7 @@ function ActorQqSettingsDetail({
             key={`${savedSettings.enabled}:${savedSettings.wsUrl}:${savedSettings.accessToken}`}
             actorId={actorId}
             savedSettings={savedSettings}
+            onStateChange={onConnectionStateChange}
           />
 
           <section
@@ -3061,7 +3276,7 @@ function ActorQqSettingsDetail({
             className={`${styles.llmSaveButton} ${
               isSaving ? styles.llmSaveButtonSaving : ""
             }`}
-            disabled={!dirty || isSaving}
+            disabled={!dirty || isSaving || isSwitching}
             onClick={() => {
               void onSave();
             }}
@@ -3124,39 +3339,111 @@ function ActorQqSettingsDetail({
   );
 }
 
-function deriveQqConnectionStatus(
-  settings: QqSettingsDraft,
-): QqConnectionStatus {
+function deriveQqConnectionState(settings: QqSettingsDraft): {
+  transportStatus: ActorQQTransportStatus;
+  blockedBy: ActorQQBlockedBy;
+  endpoint: string;
+} {
   if (!settings.enabled) {
+    return {
+      transportStatus: "disconnected",
+      blockedBy: "qq_disabled",
+      endpoint: settings.wsUrl.trim(),
+    };
+  }
+
+  return {
+    transportStatus: "connecting",
+    blockedBy: null,
+    endpoint: settings.wsUrl.trim(),
+  };
+}
+
+function getQqConnectionStatusClass(connection: {
+  transportStatus: ActorQQTransportStatus;
+  blockedBy: ActorQQBlockedBy;
+}) {
+  if (connection.blockedBy === "qq_disabled") {
     return "disabled";
   }
-
-  if (!settings.wsUrl.trim() || !settings.accessToken.trim()) {
-    return "unconfigured";
+  if (connection.blockedBy === "actor_offline") {
+    return "offline";
   }
+  return connection.transportStatus;
+}
 
-  return "connecting";
+function getQqConnectionStatusMeta(connection: {
+  transportStatus: ActorQQTransportStatus;
+  blockedBy: ActorQQBlockedBy;
+}): {
+  title: string;
+  detail: string;
+  icon: "connected" | "disconnected" | "connecting";
+} {
+  if (connection.blockedBy === "qq_disabled") {
+    return {
+      title: "NapCatQQ 未启用",
+      detail: "NapCatQQ 未启用，当前不会接入 QQ。",
+      icon: "disconnected",
+    };
+  }
+  if (connection.blockedBy === "actor_offline") {
+    return {
+      title: "角色未启用",
+      detail: "角色未启用，QQ 通道暂未启动。",
+      icon: "disconnected",
+    };
+  }
+  if (connection.transportStatus === "connected") {
+    return {
+      title: "已连接",
+      detail: "",
+      icon: "connected",
+    };
+  }
+  if (connection.transportStatus === "connecting") {
+    return {
+      title: "正在连接",
+      detail: "",
+      icon: "connecting",
+    };
+  }
+  return {
+    title: "未连接",
+    detail: "",
+    icon: "disconnected",
+  };
 }
 
 function QqConnectionStatusCard({
   actorId,
   savedSettings,
+  onStateChange,
 }: {
   actorId: string;
   savedSettings: QqSettingsDraft;
+  onStateChange?: (state: {
+    transportStatus: ActorQQTransportStatus;
+    blockedBy: ActorQQBlockedBy;
+  }) => void;
 }) {
   const [connection, setConnection] = useState<{
-    status: QqConnectionStatus;
+    transportStatus: ActorQQTransportStatus;
+    blockedBy: ActorQQBlockedBy;
     endpoint: string;
-  }>(() => ({
-    status: deriveQqConnectionStatus(savedSettings),
-    endpoint: savedSettings.wsUrl.trim(),
-  }));
+  }>(() => deriveQqConnectionState(savedSettings));
   const syncRunRef = useRef(0);
   const shouldSyncConnection =
     savedSettings.enabled &&
     Boolean(savedSettings.wsUrl.trim()) &&
     Boolean(savedSettings.accessToken.trim());
+
+  useEffect(() => {
+    onStateChange?.({
+      transportStatus: connection.transportStatus,
+      blockedBy: connection.blockedBy,
+    });
+  }, [connection.blockedBy, connection.transportStatus, onStateChange]);
 
   const syncConnectionStatus = useCallback(
     async (
@@ -3171,7 +3458,8 @@ function QqConnectionStatusCard({
       const runId = ++syncRunRef.current;
       if (!silent) {
         setConnection({
-          status: "connecting",
+          transportStatus: "connecting",
+          blockedBy: null,
           endpoint,
         });
       }
@@ -3183,7 +3471,8 @@ function QqConnectionStatusCard({
         }
 
         setConnection({
-          status: response.connection.status,
+          transportStatus: response.connection.transportStatus,
+          blockedBy: response.connection.blockedBy,
           endpoint: response.connection.endpoint || endpoint,
         });
       } catch {
@@ -3192,7 +3481,8 @@ function QqConnectionStatusCard({
         }
 
         setConnection({
-          status: "failed",
+          transportStatus: "disconnected",
+          blockedBy: null,
           endpoint,
         });
       }
@@ -3225,7 +3515,8 @@ function QqConnectionStatusCard({
           return;
         }
         setConnection({
-          status: event.data.status,
+          transportStatus: event.data.transportStatus,
+          blockedBy: event.data.blockedBy,
           endpoint: event.data.endpoint || savedSettings.wsUrl.trim(),
         });
       },
@@ -3248,53 +3539,19 @@ function QqConnectionStatusCard({
     };
   }, [shouldSyncConnection, syncConnectionStatus]);
 
-  const statusMeta: Record<
-    QqConnectionStatus,
-    {
-      title: string;
-      detail: string;
-      icon: "connected" | "failed" | "connecting";
-    }
-  > = {
-    disabled: {
-      title: "未启用",
-      detail: "NapCatQQ 未启用，当前不会接入 QQ。",
-      icon: "failed",
-    },
-    unconfigured: {
-      title: "等待配置",
-      detail: "保存 ws 地址与 token 后会开始展示连接状态。",
-      icon: "failed",
-    },
-    connecting: {
-      title: "连接中",
-      detail: "正在根据已保存配置连接 NapCatQQ ws 服务端。",
-      icon: "connecting",
-    },
-    connected: {
-      title: "已连接",
-      detail: "已连接到NapCatQQ",
-      icon: "connected",
-    },
-    failed: {
-      title: "连接失败",
-      detail: "允许先保存配置，连接可稍后由服务自动恢复或继续调整。",
-      icon: "failed",
-    },
-  };
-  const status = connection.status;
-  const meta = statusMeta[status];
+  const meta = getQqConnectionStatusMeta(connection);
   const effectiveWsUrl = connection.endpoint || savedSettings.wsUrl.trim();
+  const statusClass = getQqConnectionStatusClass(connection);
 
   return (
     <section
-      className={`${styles.qqStatusCard} ${styles[`qqStatusCard_${status}`]}`}
+      className={`${styles.qqStatusCard} ${styles[`qqStatusCard_${statusClass}`]}`}
       aria-label="QQ 连接状态"
     >
       <div className={styles.qqStatusIcon} aria-hidden="true">
         {meta.icon === "connected" ? (
           <LinkIcon />
-        ) : meta.icon === "failed" ? (
+        ) : meta.icon === "disconnected" ? (
           <Unlink />
         ) : (
           <LoaderCircle />
@@ -3306,13 +3563,20 @@ function QqConnectionStatusCard({
           <strong>{meta.title}</strong>
         </div>
         <p className={styles.qqStatusDetail}>
-          {status === "connected" ? (
+          {connection.blockedBy === null &&
+          connection.transportStatus === "connected" ? (
             <>
               已连接到 <code>{effectiveWsUrl}</code>
             </>
-          ) : status === "failed" ? (
+          ) : connection.blockedBy === null &&
+            connection.transportStatus === "connecting" ? (
             <>
-              无法连接到 <code>{effectiveWsUrl}</code>，
+              正在连接 <code>{effectiveWsUrl}</code>
+            </>
+          ) : connection.blockedBy === null &&
+            connection.transportStatus === "disconnected" ? (
+            <>
+              未连接到 <code>{effectiveWsUrl}</code>，
               <button
                 type="button"
                 onClick={() => {

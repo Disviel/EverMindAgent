@@ -1,6 +1,6 @@
 import "server-only";
 
-import { randomInt as cryptoRandomInt, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import {
   toActorSummary,
   toDashboardOverviewResponse,
@@ -13,18 +13,13 @@ import {
 } from "@/server/ema-adapter/ids";
 import {
   toWebLlmConfig,
+  toWebQqBlockedBy,
+  toWebQqConversation,
   toWebQqConfig,
+  toWebQqTransportStatus,
   toWebSearchConfig,
 } from "@/server/ema-adapter/settings";
 import { ensureEmaServer } from "@/server/ema-server";
-import { syncQqConnection } from "@/server/behaviors/qq-connect";
-import { createEvent, publishEvent } from "@/server/events/bus";
-import {
-  getActorRecord,
-  listActorSummaries,
-  saveActorQqSettings,
-} from "@/server/store/actors";
-import { getQqConnection, qqConnectionResponse } from "@/server/store/qq";
 import type {
   ActorActivityUpdateRequest,
   ActorActivityUpdateResponse,
@@ -36,6 +31,7 @@ import type {
   ActorLlmSaveResponse,
   ActorQQChannelResponse,
   ActorQQConfig,
+  ActorQQConnectionSyncReason,
   ActorQQConnectionStatusRequest,
   ActorQQConnectionStatusResponse,
   ActorQQConversation,
@@ -43,6 +39,8 @@ import type {
   ActorQQConversationListResponse,
   ActorQQConversationMutationResponse,
   ActorQQConversationPatchRequest,
+  ActorQQEnabledUpdateRequest,
+  ActorQQEnabledUpdateResponse,
   ActorQQSaveRequest,
   ActorQQSaveResponse,
   ActorSettingsResponse,
@@ -59,7 +57,6 @@ import type {
 } from "@/types/dashboard/v1beta1";
 
 const API_VERSION = "v1beta1" as const;
-const QQ_SAVE_PASS_RATE = 0.86;
 const EMPTY_QQ_CONFIG: ActorQQConfig = {
   enabled: false,
   wsUrl: "",
@@ -72,15 +69,6 @@ const EMPTY_CORE_QQ_CONFIG = {
   accessToken: "",
 };
 
-const sleep = (duration: number) =>
-  new Promise((resolve) => setTimeout(resolve, duration));
-
-const randomInt = (min: number, max: number) =>
-  Math.floor(Math.random() * (max - min + 1)) + min;
-
-const shouldMockSaveSucceed = (passRate: number) =>
-  cryptoRandomInt(0, 10000) < Math.round(passRate * 10000);
-
 function now() {
   return new Date().toISOString();
 }
@@ -90,15 +78,6 @@ function hostFromUrl(value: string) {
     return new URL(value).host;
   } catch {
     return value || null;
-  }
-}
-
-function isWsUrl(value: string) {
-  try {
-    const url = new URL(value);
-    return url.protocol === "ws:" || url.protocol === "wss:";
-  } catch {
-    return false;
   }
 }
 
@@ -153,76 +132,41 @@ export async function buildActorSettingsResponse(
   actorId: string,
 ): Promise<ActorSettingsResponse> {
   const server = await ensureEmaServer();
+  const coreActorId = toCoreActorId(actorId);
   const globalDefaults = server.controller.settings.getGlobalDefaults();
   const global = {
     llm: toWebLlmConfig(globalDefaults.llm),
     webSearch: toWebSearchConfig(globalDefaults.webSearch),
   };
-
-  let coreActorId: number | null = null;
-  try {
-    coreActorId = toCoreActorId(actorId);
-  } catch {
-    coreActorId = null;
-  }
-
-  if (coreActorId !== null) {
-    const actor = await server.dbService.actorDB.getActor(coreActorId);
-    if (!actor) {
-      return {
-        apiVersion: API_VERSION,
-        actorId,
-        settings: {
-          qq: { ...EMPTY_QQ_CONFIG, conversations: [] },
-        },
-        global,
-      };
-    }
-
-    const qqConversations =
-      await server.controller.channel.listQqConversations(coreActorId);
-    const settings: ActorSettingsSnapshot = {
-      ...(actor.llmConfig ? { llm: toWebLlmConfig(actor.llmConfig) } : {}),
-      ...(actor.webSearchConfig
-        ? { webSearch: toWebSearchConfig(actor.webSearchConfig) }
-        : {}),
-      qq: toWebQqConfig(
-        actor.channelConfig?.qq ?? EMPTY_CORE_QQ_CONFIG,
-        qqConversations,
-      ),
-    };
-    return {
-      apiVersion: API_VERSION,
-      actorId,
-      settings,
-      global,
-    };
-  }
-
-  // Legacy mock actor ids are kept only until QQ is migrated in Step 3.7.
-  const existingActor = await getActorRecord(actorId);
-  if (existingActor) {
+  const actor = await server.dbService.actorDB.getActor(coreActorId);
+  if (!actor) {
     return {
       apiVersion: API_VERSION,
       actorId,
       settings: {
-        qq: {
-          ...existingActor.settings.qq,
-          conversations: existingActor.settings.qq.conversations.map(
-            (conversation) => ({ ...conversation }),
-          ),
-        },
+        qq: { ...EMPTY_QQ_CONFIG, conversations: [] },
       },
       global,
     };
   }
 
+  const qqConversations =
+    await server.controller.channel.listQqConversations(coreActorId);
+  const settings: ActorSettingsSnapshot = {
+    ...(actor.llmConfig ? { llm: toWebLlmConfig(actor.llmConfig) } : {}),
+    ...(actor.webSearchConfig
+      ? { webSearch: toWebSearchConfig(actor.webSearchConfig) }
+      : {}),
+    qq: toWebQqConfig(
+      actor.channelConfig?.qq ?? EMPTY_CORE_QQ_CONFIG,
+      qqConversations,
+    ),
+  };
+
   return {
     apiVersion: API_VERSION,
     actorId,
-    settings: {
-      qq: { ...EMPTY_QQ_CONFIG, conversations: [] },
-    },
+    settings,
     global,
   };
 }
@@ -230,43 +174,36 @@ export async function buildActorSettingsResponse(
 export async function buildActorQqChannelResponse(
   actorId: string,
 ): Promise<ActorQQChannelResponse> {
-  const [settings, connection] = await Promise.all([
-    buildActorSettingsResponse(actorId),
-    getQqConnection(actorId),
+  const server = await ensureEmaServer();
+  const coreActorId = toCoreActorId(actorId);
+  const [channelConfig, conversations, connectionState] = await Promise.all([
+    server.dbService.getActorChannelConfig(coreActorId),
+    server.controller.channel.listQqConversations(coreActorId),
+    server.controller.channel.getQqConnectionState(coreActorId),
   ]);
-  const config = settings.settings.qq ?? {
-    ...EMPTY_QQ_CONFIG,
-    conversations: [],
-  };
+  const config = toWebQqConfig(channelConfig.qq, conversations);
   return {
     apiVersion: API_VERSION,
     actorId,
     config,
-    connection: connection
-      ? {
-          id: `qq-connection-${actorId}`,
-          target: "qq",
-          actorId,
-          status: connection.status,
-          reason: "poll",
-          endpoint: connection.endpoint,
-          enabled: connection.enabled,
-          checkedAt: connection.checkedAt,
-          retryable: connection.status === "failed",
-          diagnostics: {},
-        }
-      : null,
+    connection: createQqConnectionResponse(actorId, connectionState, "poll")
+      .connection,
   };
 }
 
 export async function listActorQqConversationsService(
   actorId: string,
 ): Promise<ActorQQConversationListResponse> {
-  const settings = await buildActorSettingsResponse(actorId);
+  const server = await ensureEmaServer();
+  const conversations = await server.controller.channel.listQqConversations(
+    toCoreActorId(actorId),
+  );
   return {
     apiVersion: API_VERSION,
     actorId,
-    conversations: settings.settings.qq?.conversations ?? [],
+    conversations: conversations
+      .map(toWebQqConversation)
+      .filter((item): item is ActorQQConversation => Boolean(item)),
   };
 }
 
@@ -274,40 +211,39 @@ export async function createActorQqConversationService(
   actorId: string,
   request: Partial<ActorQQConversationCreateRequest>,
 ): Promise<ActorQQConversationMutationResponse> {
-  const actor = await getActorRecord(actorId);
   const conversation = request.conversation;
-  if (!actor || !conversation) {
+  if (!conversation) {
     return qqConversationError(actorId, "INVALID_CONFIG", "invalid conversation");
   }
-  if (
-    actor.settings.qq.conversations.some(
-      (item) => item.type === conversation.type && item.uid === conversation.uid,
-    )
-  ) {
-    return qqConversationError(actorId, "CONVERSATION_EXISTS", "conversation exists");
-  }
 
-  const nextConversation: ActorQQConversation = {
-    id: `qq-${conversation.type}-${conversation.uid}`,
-    type: conversation.type,
-    uid: conversation.uid,
-    name: conversation.name,
-    description: conversation.description,
-    allowProactive: conversation.allowProactive,
-  };
-  const ok = await saveActorQqSettings(actorId, {
-    ...actor.settings.qq,
-    conversations: [...actor.settings.qq.conversations, nextConversation],
-  });
-  if (ok) {
-    await publishActorUpdated(actorId);
+  try {
+    const server = await ensureEmaServer();
+    const created = await server.controller.channel.addQqConversation(
+      toCoreActorId(actorId),
+      conversation,
+    );
+    const nextConversation = toWebQqConversation(created);
+    if (!nextConversation) {
+      return qqConversationError(
+        actorId,
+        "INVALID_CONFIG",
+        "invalid conversation",
+      );
+    }
+    await server.controller.actor.publishUpdated(toCoreActorId(actorId));
+    return {
+      apiVersion: API_VERSION,
+      ok: true,
+      actorId,
+      conversation: nextConversation,
+    };
+  } catch (error) {
+    return qqConversationError(
+      actorId,
+      classifyQqConversationError(error),
+      messageFromError(error),
+    );
   }
-  return {
-    apiVersion: API_VERSION,
-    ok,
-    actorId,
-    conversation: nextConversation,
-  };
 }
 
 export async function patchActorQqConversationService(
@@ -315,18 +251,9 @@ export async function patchActorQqConversationService(
   conversationId: string,
   request: Partial<ActorQQConversationPatchRequest>,
 ): Promise<ActorQQConversationMutationResponse> {
-  const actor = await getActorRecord(actorId);
-  if (!actor) {
-    return qqConversationError(
-      actorId,
-      "CONVERSATION_NOT_FOUND",
-      "conversation not found",
-    );
-  }
-  const index = actor.settings.qq.conversations.findIndex(
-    (item) => item.id === conversationId,
-  );
-  if (index < 0) {
+  const coreActorId = toCoreActorId(actorId);
+  const coreConversationId = toCoreConversationId(conversationId);
+  if (coreConversationId === null) {
     return qqConversationError(
       actorId,
       "CONVERSATION_NOT_FOUND",
@@ -334,53 +261,67 @@ export async function patchActorQqConversationService(
     );
   }
 
-  const current = actor.settings.qq.conversations[index];
-  const nextConversation: ActorQQConversation = {
-    ...current,
-    ...(typeof request.patch?.name === "string"
-      ? { name: request.patch.name }
-      : {}),
-    ...(typeof request.patch?.description === "string"
-      ? { description: request.patch.description }
-      : {}),
-    ...(typeof request.patch?.allowProactive === "boolean"
-      ? { allowProactive: request.patch.allowProactive }
-      : {}),
-  };
-  const nextConversations = actor.settings.qq.conversations.map((item, itemIndex) =>
-    itemIndex === index ? nextConversation : item,
-  );
-  const ok = await saveActorQqSettings(actorId, {
-    ...actor.settings.qq,
-    conversations: nextConversations,
-  });
-  if (ok) {
-    await publishActorUpdated(actorId);
+  try {
+    const server = await ensureEmaServer();
+    const current =
+      await server.dbService.conversationDB.getConversation(coreConversationId);
+    if (!current || current.actorId !== coreActorId) {
+      return qqConversationError(
+        actorId,
+        "CONVERSATION_NOT_FOUND",
+        "conversation not found",
+      );
+    }
+    const currentWebConversation = toWebQqConversation(current);
+    if (!currentWebConversation) {
+      return qqConversationError(
+        actorId,
+        "CONVERSATION_NOT_FOUND",
+        "conversation not found",
+      );
+    }
+    const updated = await server.controller.channel.updateQqConversation(
+      coreActorId,
+      coreConversationId,
+      {
+        name: request.patch?.name ?? currentWebConversation.name,
+        description:
+          request.patch?.description ?? currentWebConversation.description,
+        allowProactive:
+          request.patch?.allowProactive ??
+          currentWebConversation.allowProactive,
+      },
+    );
+    const nextConversation = toWebQqConversation(updated);
+    if (!nextConversation) {
+      return qqConversationError(
+        actorId,
+        "INVALID_CONFIG",
+        "invalid conversation",
+      );
+    }
+    await server.controller.actor.publishUpdated(coreActorId);
+    return {
+      apiVersion: API_VERSION,
+      ok: true,
+      actorId,
+      conversation: nextConversation,
+    };
+  } catch (error) {
+    return qqConversationError(
+      actorId,
+      classifyQqConversationError(error),
+      messageFromError(error),
+    );
   }
-  return {
-    apiVersion: API_VERSION,
-    ok,
-    actorId,
-    conversation: nextConversation,
-  };
 }
 
 export async function deleteActorQqConversationService(
   actorId: string,
   conversationId: string,
 ): Promise<ActorQQConversationMutationResponse> {
-  const actor = await getActorRecord(actorId);
-  if (!actor) {
-    return qqConversationError(
-      actorId,
-      "CONVERSATION_NOT_FOUND",
-      "conversation not found",
-    );
-  }
-  const nextConversations = actor.settings.qq.conversations.filter(
-    (item) => item.id !== conversationId,
-  );
-  if (nextConversations.length === actor.settings.qq.conversations.length) {
+  const coreConversationId = toCoreConversationId(conversationId);
+  if (coreConversationId === null) {
     return qqConversationError(
       actorId,
       "CONVERSATION_NOT_FOUND",
@@ -388,19 +329,29 @@ export async function deleteActorQqConversationService(
     );
   }
 
-  const ok = await saveActorQqSettings(actorId, {
-    ...actor.settings.qq,
-    conversations: nextConversations,
-  });
-  if (ok) {
-    await publishActorUpdated(actorId);
+  try {
+    const server = await ensureEmaServer();
+    const ok = await server.controller.channel.deleteQqConversation(
+      toCoreActorId(actorId),
+      coreConversationId,
+    );
+    if (ok) {
+      await server.controller.actor.publishUpdated(toCoreActorId(actorId));
+      return {
+        apiVersion: API_VERSION,
+        ok: true,
+        actorId,
+        conversationId,
+      };
+    }
+  } catch {
+    // Fall through to the stable not-found response.
   }
-  return {
-    apiVersion: API_VERSION,
-    ok,
+  return qqConversationError(
     actorId,
-    conversationId,
-  };
+    "CONVERSATION_NOT_FOUND",
+    "conversation not found",
+  );
 }
 
 function qqConversationError(
@@ -420,6 +371,62 @@ function qqConversationError(
   };
 }
 
+function createQqConnectionResponse(
+  actorId: string,
+  state: {
+    enabled: boolean;
+    endpoint: string;
+    transportStatus: string;
+    blockedBy: unknown;
+    checkedAt: number;
+    retryable: boolean;
+  },
+  reason: ActorQQConnectionSyncReason,
+): ActorQQConnectionStatusResponse {
+  return {
+    apiVersion: API_VERSION,
+    ok: true,
+    connection: {
+      id: `qq-connection-${actorId}`,
+      target: "qq",
+      actorId,
+      transportStatus: toWebQqTransportStatus(state.transportStatus),
+      blockedBy: toWebQqBlockedBy(state.blockedBy),
+      reason,
+      endpoint: state.endpoint,
+      enabled: state.enabled,
+      checkedAt: new Date(state.checkedAt).toISOString(),
+      retryable: state.retryable,
+      diagnostics: {},
+    },
+  };
+}
+
+function classifyQqConversationError(
+  error: unknown,
+): NonNullable<ActorQQConversationMutationResponse["error"]>["code"] {
+  const message = messageFromError(error).toLowerCase();
+  if (message.includes("already exists")) {
+    return "CONVERSATION_EXISTS";
+  }
+  if (message.includes("not found")) {
+    return "CONVERSATION_NOT_FOUND";
+  }
+  return "INVALID_CONFIG";
+}
+
+function toCoreConversationId(conversationId: string): number | null {
+  const parsed = Number.parseInt(conversationId, 10);
+  if (
+    !Number.isInteger(parsed) ||
+    parsed <= 0 ||
+    String(parsed) !== conversationId
+  ) {
+    return null;
+  }
+  return parsed;
+}
+
 export async function createActorService(
   request: CreateActorRequest,
 ): Promise<CreateActorResponse> {
@@ -435,21 +442,6 @@ export async function createActorService(
     apiVersion: API_VERSION,
     actor: toActorSummary(details),
   };
-}
-
-async function publishActorUpdated(actorId: string) {
-  const actor = (await listActorSummaries()).find((item) => item.id === actorId);
-  if (!actor) {
-    return;
-  }
-
-  publishEvent(
-    createEvent({
-      type: "actor.updated",
-      actorId,
-      data: { actor },
-    }),
-  );
 }
 
 export async function updateActorActivityService(
@@ -779,75 +771,167 @@ export async function saveActorWebSearchServiceConfig(
   }
 }
 
-function validateQqConfig(config: ActorQQConfig) {
-  if (!config.enabled) {
-    return null;
-  }
-  const issuePaths: string[] = [];
-  if (!config.wsUrl.trim() || !isWsUrl(config.wsUrl.trim())) {
-    issuePaths.push("qq.wsUrl");
-  }
-  if (!config.accessToken.trim()) {
-    issuePaths.push("qq.accessToken");
-  }
-  return issuePaths.length === 0
-    ? null
-    : {
-        issueCount: issuePaths.length,
-        issuePaths,
-        issueCodes: issuePaths.map(() => "required"),
-      };
-}
-
 export async function saveActorQqServiceConfig(
   actorId: string,
   request: ActorQQSaveRequest,
 ): Promise<ActorQQSaveResponse> {
   const startedAt = now();
-  await sleep(randomInt(360, 700));
-  const invalid = validateQqConfig(request.config);
-  const ok =
-    !invalid &&
-    shouldMockSaveSucceed(QQ_SAVE_PASS_RATE) &&
-    (await saveActorQqSettings(actorId, request.config));
-
-  if (ok) {
-    await publishActorUpdated(actorId);
-    void syncQqConnection({
+  const config = request.config;
+  if (!config) {
+    return createSaveResponse({
+      target: "qq",
       actorId,
-      config: request.config,
-      reason: "configChanged",
-    });
+      startedAt,
+      ok: false,
+      errorCode: "INVALID_CONFIG",
+      errorDetails: {
+        issuePaths: ["qq"],
+        issueCodes: ["required"],
+      },
+      diagnostics: {},
+    }) as ActorQQSaveResponse;
   }
 
-  return createSaveResponse({
-    target: "qq",
-    actorId,
-    startedAt,
-    ok: Boolean(ok),
-    errorCode: invalid ? "INVALID_CONFIG" : "DATABASE_WRITE_FAILED",
-    errorDetails: invalid ?? undefined,
-    diagnostics: {
-      enabled: request.config.enabled,
-      endpoint: hostFromUrl(request.config.wsUrl),
-      conversationCount: request.config.conversations.length,
-      storage: "mock-settings-store",
-    },
-  }) as ActorQQSaveResponse;
+  try {
+    const server = await ensureEmaServer();
+    const coreActorId = toCoreActorId(actorId);
+    const savedConfig = await server.controller.channel.saveQqConnectionConfig(
+      coreActorId,
+      {
+        wsUrl: config.wsUrl.trim(),
+        accessToken: config.accessToken.trim(),
+      },
+    );
+    const conversations =
+      await server.controller.channel.listQqConversations(coreActorId);
+    return createSaveResponse({
+      target: "qq",
+      actorId,
+      startedAt,
+      ok: true,
+      diagnostics: {
+        enabled: savedConfig.enabled,
+        endpoint: hostFromUrl(savedConfig.wsUrl),
+        conversationCount: conversations.length,
+        storage: "ema-actor-config",
+      },
+    }) as ActorQQSaveResponse;
+  } catch (error) {
+    const message = messageFromError(error);
+    return createSaveResponse({
+      target: "qq",
+      actorId,
+      startedAt,
+      ok: false,
+      errorCode: isInvalidSettingsError(message)
+        ? "INVALID_CONFIG"
+        : "DATABASE_WRITE_FAILED",
+      errorDetails: {
+        message,
+      },
+      diagnostics: {
+        enabled: config.enabled,
+        endpoint: hostFromUrl(config.wsUrl),
+        conversationCount: config.conversations.length,
+        storage: "ema-actor-config",
+      },
+    }) as ActorQQSaveResponse;
+  }
+}
+
+export async function updateActorQqEnabledService(
+  actorId: string,
+  request: ActorQQEnabledUpdateRequest,
+): Promise<ActorQQEnabledUpdateResponse> {
+  const enabled = request.enabled === true;
+  try {
+    const server = await ensureEmaServer();
+    const coreActorId = toCoreActorId(actorId);
+    const savedConfig = await server.controller.channel.setQqEnabled(
+      coreActorId,
+      enabled,
+    );
+    const [conversations, connectionState] = await Promise.all([
+      server.controller.channel.listQqConversations(coreActorId),
+      server.controller.channel.getQqConnectionState(coreActorId),
+    ]);
+    const config = toWebQqConfig(savedConfig, conversations);
+    return {
+      apiVersion: API_VERSION,
+      ok: true,
+      actorId,
+      config,
+      connection: createQqConnectionResponse(
+        actorId,
+        connectionState,
+        "configChanged",
+      ).connection,
+    };
+  } catch (error) {
+    const message = messageFromError(error);
+    let config = { ...EMPTY_QQ_CONFIG };
+    let connectionState: {
+      enabled: boolean;
+      endpoint: string;
+      transportStatus: string;
+      blockedBy: unknown;
+      checkedAt: number;
+      retryable: boolean;
+    } = {
+      enabled: false,
+      endpoint: "",
+      transportStatus: "disconnected",
+      blockedBy: "qq_disabled",
+      checkedAt: Date.now(),
+      retryable: false,
+    };
+    try {
+      const server = await ensureEmaServer();
+      const coreActorId = toCoreActorId(actorId);
+      const [channelConfig, conversations, currentState] = await Promise.all([
+        server.dbService.getActorChannelConfig(coreActorId),
+        server.controller.channel.listQqConversations(coreActorId),
+        server.controller.channel.getQqConnectionState(coreActorId),
+      ]);
+      config = toWebQqConfig(channelConfig.qq, conversations);
+      connectionState = currentState;
+    } catch {
+      // Keep the stable error shape even when the actor has disappeared.
+    }
+    return {
+      apiVersion: API_VERSION,
+      ok: false,
+      actorId,
+      config,
+      connection: createQqConnectionResponse(
+        actorId,
+        connectionState,
+        "configChanged",
+      ).connection,
+      error: {
+        code: isInvalidSettingsError(message)
+          ? "INVALID_CONFIG"
+          : "DATABASE_WRITE_FAILED",
+        retryable: true,
+        message,
+        details: {
+          message,
+        },
+      },
+    };
+  }
 }
 
 export async function syncActorQqServiceConnectionStatus(
   actorId: string,
   request: ActorQQConnectionStatusRequest,
 ): Promise<ActorQQConnectionStatusResponse> {
-  const actor = await getActorRecord(actorId);
-  const config = actor?.settings.qq ?? {
-    enabled: false,
-    wsUrl: "",
-    accessToken: "",
-    conversations: [],
-  };
+  const server = await ensureEmaServer();
+  const coreActorId = toCoreActorId(actorId);
   const reason = request.reason ?? "poll";
-  const connection = await syncQqConnection({ actorId, config, reason });
-  return qqConnectionResponse(actorId, connection, reason);
+  const connectionState =
+    reason === "retry"
+      ? await server.controller.channel.restartQq(coreActorId)
+      : await server.controller.channel.publishQqStatus(coreActorId);
+  return createQqConnectionResponse(actorId, connectionState, reason);
 }

@@ -2,8 +2,9 @@ import "server-only";
 
 import { getDbSnapshot, updateDb } from "@/server/store/db";
 import type {
-  ActorQQConnectionStatus,
+  ActorQQBlockedBy,
   ActorQQConnectionStatusResponse,
+  ActorQQTransportStatus,
 } from "@/types/dashboard/v1beta1";
 
 export async function getQqConnection(actorId: string) {
@@ -12,23 +13,29 @@ export async function getQqConnection(actorId: string) {
 
 export async function setQqConnection({
   actorId,
-  status,
+  transportStatus,
+  blockedBy,
   endpoint,
   enabled,
+  retryable,
 }: {
   actorId: string;
-  status: ActorQQConnectionStatus;
+  transportStatus: ActorQQTransportStatus;
+  blockedBy: ActorQQBlockedBy;
   endpoint: string;
   enabled: boolean;
+  retryable: boolean;
 }) {
   const checkedAt = new Date().toISOString();
   return updateDb((db) => {
     const connection = {
       actorId,
-      status,
+      transportStatus,
+      blockedBy,
       endpoint,
       enabled,
       checkedAt,
+      retryable,
     };
     db.qqConnections[actorId] = connection;
     return connection;
@@ -47,12 +54,13 @@ export function qqConnectionResponse(
       id: `qq-connection-${actorId}`,
       target: "qq",
       actorId,
-      status: connection.status,
+      transportStatus: connection.transportStatus,
+      blockedBy: connection.blockedBy,
       reason,
       endpoint: connection.endpoint,
       enabled: connection.enabled,
       checkedAt: connection.checkedAt,
-      retryable: connection.status === "failed",
+      retryable: connection.retryable,
       diagnostics: {},
     },
   };

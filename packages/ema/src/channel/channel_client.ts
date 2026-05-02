@@ -34,7 +34,7 @@ export class WebsocketChannelClient implements Channel, ChannelClient {
   private readonly logger: Logger;
 
   private enabled = true;
-  private status: ChannelClientStatus = "exhausted";
+  private status: ChannelClientStatus = "disconnected";
   private socket: WebSocket | null = null;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private retrySleepResolver: (() => void) | null = null;
@@ -142,7 +142,7 @@ export class WebsocketChannelClient implements Channel, ChannelClient {
 
   async close(): Promise<void> {
     this.loopVersion += 1;
-    this.setStatus("exhausted");
+    this.setStatus("disconnected");
     if (this.retryTimer) {
       clearTimeout(this.retryTimer);
       this.retryTimer = null;
@@ -275,6 +275,7 @@ export class WebsocketChannelClient implements Channel, ChannelClient {
           break;
         } catch {
           this.closeSocket();
+          this.setStatus("disconnected");
           await this.sleep(retryDelayMs, loopVersion);
         }
       }
@@ -283,7 +284,7 @@ export class WebsocketChannelClient implements Channel, ChannelClient {
         return;
       }
 
-      this.setStatus("connecting");
+      this.setStatus("disconnected");
       await this.sleep(retryDelayMs, loopVersion);
     }
   }
@@ -416,7 +417,7 @@ export class WebsocketChannelClient implements Channel, ChannelClient {
     });
 
     if (!this.enabled || this.loopVersion !== loopVersion) {
-      this.setStatus("exhausted");
+      this.setStatus("disconnected");
     }
   }
 

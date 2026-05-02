@@ -4,43 +4,86 @@ import type { ConversationEntity } from "../db";
 import type { Server } from "../server";
 import type { QQConversationInput } from "./types";
 
-export type QQConnectionStatus =
-  | "disabled"
-  | "unconfigured"
+export type QQTransportStatus =
   | "connecting"
   | "connected"
-  | "failed";
+  | "disconnected";
+
+export type QQBlockedBy = "actor_offline" | "qq_disabled" | null;
+
+export interface QQConnectionState {
+  target: "qq";
+  actorId: number;
+  enabled: boolean;
+  endpoint: string;
+  transportStatus: QQTransportStatus;
+  blockedBy: QQBlockedBy;
+  checkedAt: number;
+  retryable: boolean;
+}
 
 export class ChannelController {
   constructor(private readonly server: Server) {}
 
-  async saveQqConfig(
+  async saveQqConnectionConfig(
     actorId: number,
-    config: ChannelConfig["qq"],
+    config: Pick<ChannelConfig["qq"], "wsUrl" | "accessToken">,
   ): Promise<ChannelConfig["qq"]> {
-    if (config.enabled) {
-      if (!config.wsUrl.trim()) {
-        throw new Error("QQ wsUrl is required when QQ is enabled.");
-      }
-      if (!config.accessToken.trim()) {
-        throw new Error("QQ accessToken is required when QQ is enabled.");
-      }
+    if (!config.wsUrl.trim()) {
+      throw new Error("QQ wsUrl is required.");
+    }
+    if (!config.accessToken.trim()) {
+      throw new Error("QQ accessToken is required.");
     }
     const actor = await this.requireActor(actorId);
     const current = await this.server.dbService.getActorChannelConfig(actorId);
+    const nextConfig = {
+      ...current.qq,
+      wsUrl: config.wsUrl.trim(),
+      accessToken: config.accessToken.trim(),
+    };
     await this.server.dbService.actorDB.upsertActor({
       ...actor,
       channelConfig: {
         ...current,
-        qq: config,
+        qq: nextConfig,
       },
     });
-    if (actor.enabled) {
-      await this.server.gateway.channelRegistry.refreshActorChannels(actorId);
-    }
+    await this.server.gateway.channelRegistry.refreshActorChannels(actorId);
     await this.publishQqStatus(actorId);
     await this.server.controller.actor.publishUpdated(actorId);
-    return config;
+    return nextConfig;
+  }
+
+  async setQqEnabled(
+    actorId: number,
+    enabled: boolean,
+  ): Promise<ChannelConfig["qq"]> {
+    const actor = await this.requireActor(actorId);
+    const current = await this.server.dbService.getActorChannelConfig(actorId);
+    if (enabled) {
+      if (!current.qq.wsUrl.trim()) {
+        throw new Error("QQ wsUrl is required before QQ can be enabled.");
+      }
+      if (!current.qq.accessToken.trim()) {
+        throw new Error("QQ accessToken is required before QQ can be enabled.");
+      }
+    }
+    const nextConfig = {
+      ...current.qq,
+      enabled,
+    };
+    await this.server.dbService.actorDB.upsertActor({
+      ...actor,
+      channelConfig: {
+        ...current,
+        qq: nextConfig,
+      },
+    });
+    await this.server.gateway.channelRegistry.refreshActorChannels(actorId);
+    await this.publishQqStatus(actorId);
+    await this.server.controller.actor.publishUpdated(actorId);
+    return nextConfig;
   }
 
   async listQqConversations(actorId: number): Promise<ConversationEntity[]> {
@@ -122,41 +165,68 @@ export class ChannelController {
     );
   }
 
-  async getQqStatus(actorId: number): Promise<QQConnectionStatus> {
+  async getQqConnectionState(actorId: number): Promise<QQConnectionState> {
     const config = await this.server.dbService.getActorChannelConfig(actorId);
+    let transportStatus: QQTransportStatus = "disconnected";
+    let blockedBy: QQBlockedBy = null;
     if (!config.qq.enabled) {
-      return "disabled";
+      blockedBy = "qq_disabled";
+    } else if (!this.server.actorRegistry?.get(actorId)) {
+      blockedBy = "actor_offline";
+    } else {
+      transportStatus =
+        this.server.gateway?.channelRegistry.getActorChannelStatus(
+          actorId,
+          "qq",
+        ) ?? "disconnected";
     }
-    if (!config.qq.wsUrl.trim() || !config.qq.accessToken.trim()) {
-      return "unconfigured";
-    }
-    return this.server.gateway?.channelRegistry.getActorChannelStatus(
+
+    return {
+      target: "qq",
       actorId,
-      "qq",
-    ) ?? "failed";
+      enabled: config.qq.enabled,
+      endpoint: config.qq.wsUrl,
+      transportStatus,
+      blockedBy,
+      checkedAt: Date.now(),
+      retryable: blockedBy === null && transportStatus === "disconnected",
+    };
   }
 
-  async restartQq(actorId: number): Promise<QQConnectionStatus> {
-    await this.server.gateway.channelRegistry.restartActorChannel(actorId, "qq");
+  async restartQq(actorId: number): Promise<QQConnectionState> {
+    const config = await this.server.dbService.getActorChannelConfig(actorId);
+    if (
+      config.qq.enabled &&
+      config.qq.wsUrl.trim() &&
+      config.qq.accessToken.trim() &&
+      this.server.actorRegistry?.get(actorId)
+    ) {
+      await this.server.gateway.channelRegistry.restartActorChannel(
+        actorId,
+        "qq",
+      );
+    }
     return await this.publishQqStatus(actorId);
   }
 
-  async publishQqStatus(actorId: number): Promise<QQConnectionStatus> {
-    const status = await this.getQqStatus(actorId);
-    const config = await this.server.dbService.getActorChannelConfig(actorId);
+  async publishQqStatus(actorId: number): Promise<QQConnectionState> {
+    const state = await this.getQqConnectionState(actorId);
     this.server.bus.publish(
       this.server.bus.createEvent({
         type: "channel.qq.connection.changed",
         actorId,
         data: {
-          status,
-          endpoint: config.qq.wsUrl,
-          enabled: config.qq.enabled,
-          checkedAt: Date.now(),
+          target: state.target,
+          enabled: state.enabled,
+          endpoint: state.endpoint,
+          transportStatus: state.transportStatus,
+          blockedBy: state.blockedBy,
+          checkedAt: state.checkedAt,
+          retryable: state.retryable,
         },
       }),
     );
-    return status;
+    return state;
   }
 
   private async upsertQqConversation(

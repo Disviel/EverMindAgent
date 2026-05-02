@@ -9,6 +9,10 @@ import type {
   ActorQQConnectionStatusResponse,
   ActorQQConnectionSyncReason,
   ActorQQConfig,
+  ActorQQConversationCreateRequest,
+  ActorQQEnabledUpdateResponse,
+  ActorQQConversationMutationResponse,
+  ActorQQConversationPatchRequest,
   ActorQQSaveResponse,
   ActorSettingsResponse,
   ActorWebSearchConfig,
@@ -150,6 +154,58 @@ export function saveActorQqConfig(actorId: string, config: ActorQQConfig) {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ config }),
+    },
+  );
+}
+
+export function updateActorQqEnabled(actorId: string, enabled: boolean) {
+  return fetchJson<ActorQQEnabledUpdateResponse>(
+    `/api/v1beta1/actors/${encodeURIComponent(actorId)}/channels/qq`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    },
+  );
+}
+
+export function createActorQqConversation(
+  actorId: string,
+  conversation: ActorQQConversationCreateRequest["conversation"],
+) {
+  return fetchJson<ActorQQConversationMutationResponse>(
+    `/api/v1beta1/actors/${encodeURIComponent(actorId)}/channels/qq/conversations`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversation }),
+    },
+  );
+}
+
+export function patchActorQqConversation(
+  actorId: string,
+  conversationId: string,
+  patch: ActorQQConversationPatchRequest["patch"],
+) {
+  return fetchJson<ActorQQConversationMutationResponse>(
+    `/api/v1beta1/actors/${encodeURIComponent(actorId)}/channels/qq/conversations/${encodeURIComponent(conversationId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ patch }),
+    },
+  );
+}
+
+export function deleteActorQqConversation(
+  actorId: string,
+  conversationId: string,
+) {
+  return fetchJson<ActorQQConversationMutationResponse>(
+    `/api/v1beta1/actors/${encodeURIComponent(actorId)}/channels/qq/conversations/${encodeURIComponent(conversationId)}`,
+    {
+      method: "DELETE",
     },
   );
 }

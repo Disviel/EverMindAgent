@@ -13,7 +13,7 @@ import type {
 } from "@/types/events/v1beta1";
 import { toActorSummary } from "./dashboard";
 import { toWebActorId } from "./ids";
-import { toWebQqConnectionStatus } from "./settings";
+import { toWebQqBlockedBy, toWebQqTransportStatus } from "./settings";
 
 export function toWebBusEvent(event: CoreEmaEvent): EmaKnownEvent | null {
   switch (event.type) {
@@ -113,10 +113,14 @@ function toChannelQqConnectionChangedEvent(
       ? { actorId: toWebActorId(event.actorId) }
       : {}),
     data: {
-      status: toWebQqConnectionStatus(readString(event.data, "status") ?? ""),
+      transportStatus: toWebQqTransportStatus(
+        readString(event.data, "transportStatus") ?? "",
+      ),
+      blockedBy: toWebQqBlockedBy(readString(event.data, "blockedBy")),
       endpoint: readString(event.data, "endpoint") ?? "",
       enabled: readBoolean(event.data, "enabled") ?? false,
       checkedAt: new Date(checkedAt ?? event.ts).toISOString(),
+      retryable: readBoolean(event.data, "retryable") ?? false,
     } satisfies ChannelQqConnectionChangedEventData,
   };
 }

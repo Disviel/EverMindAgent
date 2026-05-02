@@ -1,4 +1,3 @@
-import { ensureServerBooted } from "@/server";
 import {
   createActorQqConversationService,
   listActorQqConversationsService,
@@ -22,7 +21,6 @@ export async function POST(
   request: Request,
   context: { params: Promise<{ actorId: string }> },
 ) {
-  ensureServerBooted();
   const { actorId } = await context.params;
   const body = (await request
     .json()

@@ -8,9 +8,10 @@ import {
   type WebSearchConfig,
 } from "ema";
 import type {
+  ActorQQBlockedBy,
   ActorLlmConfig,
   ActorQQConfig,
-  ActorQQConnectionStatus,
+  ActorQQTransportStatus,
   ActorQQConversation,
   ActorWebSearchConfig,
 } from "@/types/dashboard/v1beta1";
@@ -101,17 +102,22 @@ export function toWebSettings(
   };
 }
 
-export function toWebQqConnectionStatus(
+export function toWebQqTransportStatus(
   status: string,
-): ActorQQConnectionStatus {
+): ActorQQTransportStatus {
   if (
-    status === "disabled" ||
-    status === "unconfigured" ||
     status === "connecting" ||
     status === "connected" ||
-    status === "failed"
+    status === "disconnected"
   ) {
     return status;
   }
-  return "failed";
+  return "disconnected";
+}
+
+export function toWebQqBlockedBy(value: unknown): ActorQQBlockedBy {
+  if (value === "actor_offline" || value === "qq_disabled") {
+    return value;
+  }
+  return null;
 }

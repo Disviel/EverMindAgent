@@ -1,6 +1,7 @@
 import type { ConversationMessage } from "@/types/chat/v1beta1";
 import type {
-  ActorQQConnectionStatus,
+  ActorQQBlockedBy,
+  ActorQQTransportStatus,
   ActorRuntimeStatus,
   ActorSummary,
 } from "@/types/dashboard/v1beta1";
@@ -50,10 +51,12 @@ export interface ConversationMessageCreatedEventData {
 }
 
 export interface ChannelQqConnectionChangedEventData {
-  status: ActorQQConnectionStatus;
+  transportStatus: ActorQQTransportStatus;
+  blockedBy: ActorQQBlockedBy;
   endpoint: string;
   enabled: boolean;
   checkedAt: string;
+  retryable: boolean;
 }
 
 export type EmaKnownEvent =

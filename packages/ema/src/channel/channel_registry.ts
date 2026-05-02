@@ -78,14 +78,14 @@ export class ChannelRegistry {
       if (
         channel instanceof WebsocketChannelClient &&
         channel.isEnabled() &&
-        channel.getStatus() === "exhausted"
+        channel.getStatus() === "disconnected"
       ) {
         channel.start();
       }
     }
   }
 
-  async stopActorChannels(actorId: number): Promise<void> {
+  async removeActorChannels(actorId: number): Promise<void> {
     const actorChannels = this.channels.get(actorId);
     if (!actorChannels) {
       return;
@@ -101,17 +101,20 @@ export class ChannelRegistry {
   }
 
   async refreshActorChannels(actorId: number): Promise<void> {
-    await this.stopActorChannels(actorId);
+    await this.removeActorChannels(actorId);
+    if (!this.server.actorRegistry?.get(actorId)) {
+      return;
+    }
     await this.ensureStarted(actorId);
   }
 
   getActorChannelStatus(
     actorId: number,
     channelName: string,
-  ): "connecting" | "connected" | "failed" {
+  ): "connecting" | "connected" | "disconnected" {
     const channel = this.getChannel(actorId, channelName);
     if (!(channel instanceof WebsocketChannelClient)) {
-      return "failed";
+      return "disconnected";
     }
     const status = channel.getStatus();
     if (status === "connected") {
@@ -120,17 +123,15 @@ export class ChannelRegistry {
     if (status === "connecting") {
       return "connecting";
     }
-    return "failed";
+    return "disconnected";
   }
 
   async restartActorChannel(actorId: number, channelName: string): Promise<void> {
-    const channel = this.getChannel(actorId, channelName);
-    if (channel instanceof WebsocketChannelClient) {
-      await channel.close();
+    await this.removeActorChannel(actorId, channelName);
+    if (!this.server.actorRegistry?.get(actorId)) {
+      return;
     }
-    const actorChannels = this.channels.get(actorId);
-    actorChannels?.delete(channelName);
-    await this.ensureStarted(actorId);
+    await this.ensureChannelStarted(actorId, channelName);
   }
 
   /**
@@ -164,6 +165,37 @@ export class ChannelRegistry {
     }
   }
 
+  private async ensureChannelStarted(
+    actorId: number,
+    channelName: string,
+  ): Promise<void> {
+    if (this.getChannel(actorId, channelName)) {
+      this.startChannels(actorId);
+      return;
+    }
+    const channel = await this.createActorChannel(actorId, channelName);
+    if (!channel) {
+      return;
+    }
+    this.registerChannel(actorId, channel);
+    this.startChannels(actorId);
+  }
+
+  private async removeActorChannel(
+    actorId: number,
+    channelName: string,
+  ): Promise<void> {
+    const channel = this.getChannel(actorId, channelName);
+    if (channel instanceof WebsocketChannelClient) {
+      await channel.close();
+    }
+    const actorChannels = this.channels.get(actorId);
+    actorChannels?.delete(channelName);
+    if (actorChannels?.size === 0) {
+      this.channels.delete(actorId);
+    }
+  }
+
   private async createActorChannel(
     actorId: number,
     channelName: string,
@@ -179,9 +211,7 @@ export class ChannelRegistry {
         return null;
       }
       if (!config.qq.wsUrl.trim() || !config.qq.accessToken.trim()) {
-        throw new Error(
-          `QQ channel config for actor ${actorId} is incomplete.`,
-        );
+        return null;
       }
       const channel = await WebsocketChannelClient.create(
         channelName,

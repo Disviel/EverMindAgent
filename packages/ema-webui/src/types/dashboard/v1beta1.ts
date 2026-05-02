@@ -241,12 +241,12 @@ export interface ActorQQConfig {
   conversations: ActorQQConversation[];
 }
 
-export type ActorQQConnectionStatus =
-  | "disabled"
-  | "unconfigured"
-  | "connecting"
+export type ActorQQTransportStatus =
   | "connected"
-  | "failed";
+  | "connecting"
+  | "disconnected";
+
+export type ActorQQBlockedBy = "actor_offline" | "qq_disabled" | null;
 
 export type ActorQQConnectionSyncReason =
   | "initial"
@@ -266,7 +266,8 @@ export interface ActorQQConnectionStatusResponse {
     id: string;
     target: "qq";
     actorId: string;
-    status: ActorQQConnectionStatus;
+    transportStatus: ActorQQTransportStatus;
+    blockedBy: ActorQQBlockedBy;
     reason: ActorQQConnectionSyncReason;
     endpoint: string;
     enabled: boolean;
@@ -305,6 +306,25 @@ export interface ActorQQSaveResponse {
       details: ActorSettingsDiagnostics;
     };
     diagnostics: ActorSettingsDiagnostics;
+  };
+}
+
+export interface ActorQQEnabledUpdateRequest {
+  requestId?: string;
+  enabled: boolean;
+}
+
+export interface ActorQQEnabledUpdateResponse {
+  apiVersion: "v1beta1";
+  ok: boolean;
+  actorId: string;
+  config: ActorQQConfig;
+  connection: ActorQQConnectionStatusResponse["connection"];
+  error?: {
+    code: ActorSettingsSaveErrorCode;
+    retryable: boolean;
+    message: string;
+    details: ActorSettingsDiagnostics;
   };
 }
 

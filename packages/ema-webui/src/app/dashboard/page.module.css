@@ -1645,6 +1645,18 @@
   transform: translateX(18px);
 }
 
+.actorSettingsSwitchLoading .actorSettingsSwitchKnob {
+  display: grid;
+  place-items: center;
+}
+
+.actorSettingsSwitchLoading .actorSettingsSwitchKnob svg {
+  width: 11px;
+  height: 11px;
+  animation: spin 900ms linear infinite;
+  color: color-mix(in srgb, var(--surface-raised) 65%, var(--accent));
+}
+
 .actorSettingsMenuItemDanger .actorSettingsMenuTitle {
   color: color-mix(in srgb, var(--danger) 88%, var(--text));
 }
@@ -1831,6 +1843,16 @@
 .llmGlobalSwitch:hover {
   background: color-mix(in srgb, var(--surface-raised) 74%, white 8%);
   transform: translateY(-1px);
+}
+
+.llmGlobalSwitch:disabled {
+  cursor: default;
+  opacity: 0.82;
+}
+
+.llmGlobalSwitch:disabled:hover {
+  background: color-mix(in srgb, var(--surface-raised) 86%, white 2%);
+  transform: none;
 }
 
 .llmGlobalSwitch:active {
@@ -2260,12 +2282,12 @@
   --qq-status-color: var(--accent);
 }
 
-.qqStatusCard_failed {
+.qqStatusCard_disconnected {
   --qq-status-color: var(--danger);
 }
 
-.qqStatusCard_unconfigured {
-  --qq-status-color: var(--warning);
+.qqStatusCard_offline {
+  --qq-status-color: var(--accent);
 }
 
 .qqStatusCard_disabled {

@@ -4,7 +4,8 @@ import type { ConversationMessage } from "@/types/chat/v1beta1";
 import type {
   ActorLlmConfig,
   ActorQQConfig,
-  ActorQQConnectionStatus,
+  ActorQQBlockedBy,
+  ActorQQTransportStatus,
   ActorRuntimeStatus,
   ActorSummary,
   ActorWebSearchConfig,
@@ -40,10 +41,12 @@ export interface MockActorRecord {
 
 export interface MockQqConnectionRecord {
   actorId: string;
-  status: ActorQQConnectionStatus;
+  transportStatus: ActorQQTransportStatus;
+  blockedBy: ActorQQBlockedBy;
   endpoint: string;
   enabled: boolean;
   checkedAt: string;
+  retryable: boolean;
 }
 
 export interface MockDb {

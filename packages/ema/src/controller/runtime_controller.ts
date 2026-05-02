@@ -46,7 +46,7 @@ export class RuntimeController {
 
       try {
         const runtime = await this.server.actorRegistry.ensure(actorId);
-        await this.server.gateway.channelRegistry.ensureStarted(actorId);
+        await this.server.gateway.channelRegistry.refreshActorChannels(actorId);
         await runtime.startBootInit();
         const snapshot = await this.getSnapshot(actorId);
         await this.publishStatus(actorId, "enable:accepted", snapshot.status);
@@ -76,7 +76,7 @@ export class RuntimeController {
 
       try {
         await this.server.actorRegistry.unload(actorId);
-        await this.server.gateway.channelRegistry.stopActorChannels(actorId);
+        await this.server.gateway.channelRegistry.removeActorChannels(actorId);
         const snapshot = await this.getSnapshot(actorId);
         await this.publishStatus(actorId, "disable:complete", "offline");
         return {
@@ -145,7 +145,7 @@ export class RuntimeController {
       enabled: false,
     });
     await this.server.actorRegistry.unload(actor.id);
-    await this.server.gateway.channelRegistry.stopActorChannels(actor.id);
+    await this.server.gateway.channelRegistry.removeActorChannels(actor.id);
     await this.publishStatus(actor.id, "enable:rollback", "offline");
   }
 
@@ -156,7 +156,7 @@ export class RuntimeController {
     });
     try {
       await this.server.actorRegistry.ensure(actor.id);
-      await this.server.gateway.channelRegistry.ensureStarted(actor.id);
+      await this.server.gateway.channelRegistry.refreshActorChannels(actor.id);
     } finally {
       await this.publishStatus(actor.id, "disable:rollback");
     }

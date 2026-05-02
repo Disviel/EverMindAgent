@@ -1,4 +1,3 @@
-import { ensureServerBooted } from "@/server";
 import {
   deleteActorQqConversationService,
   patchActorQqConversationService,
@@ -12,7 +11,6 @@ export async function PATCH(
   request: Request,
   context: { params: Promise<{ actorId: string; conversationId: string }> },
 ) {
-  ensureServerBooted();
   const { actorId, conversationId } = await context.params;
   const body = (await request
     .json()
@@ -29,7 +27,6 @@ export async function DELETE(
   _request: Request,
   context: { params: Promise<{ actorId: string; conversationId: string }> },
 ) {
-  ensureServerBooted();
   const { actorId, conversationId } = await context.params;
   const result = await deleteActorQqConversationService(actorId, conversationId);
   return Response.json(result, { status: result.ok ? 200 : 404 });

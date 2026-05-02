@@ -35,12 +35,12 @@ function createDeferred<T = void>() {
 function createFixture({
   enabled,
   runtime: initialRuntime = null,
-  ensureStarted,
+  refreshActorChannels,
   unload,
 }: {
   enabled: boolean;
   runtime?: ReturnType<typeof createRuntime> | null;
-  ensureStarted?: () => Promise<void>;
+  refreshActorChannels?: () => Promise<void>;
   unload?: () => Promise<void>;
 }) {
   const actors = new Map<number, PersistedActor>([
@@ -75,8 +75,8 @@ function createFixture({
     }),
   };
   const channelRegistry = {
-    ensureStarted: vi.fn(ensureStarted ?? (async () => {})),
-    stopActorChannels: vi.fn(async () => {}),
+    refreshActorChannels: vi.fn(refreshActorChannels ?? (async () => {})),
+    removeActorChannels: vi.fn(async () => {}),
   };
   const server = {
     dbService: { actorDB },
@@ -107,7 +107,9 @@ describe("RuntimeController", () => {
 
     expect(fixture.actors.get(1)?.enabled).toBe(true);
     expect(fixture.actorRegistry.ensure).toHaveBeenCalledWith(1);
-    expect(fixture.channelRegistry.ensureStarted).toHaveBeenCalledWith(1);
+    expect(fixture.channelRegistry.refreshActorChannels).toHaveBeenCalledWith(
+      1,
+    );
     expect(runtime.startBootInit).toHaveBeenCalledTimes(1);
     expect(snapshot).toMatchObject({
       actorId: 1,
@@ -179,7 +181,7 @@ describe("RuntimeController", () => {
 
     expect(fixture.actors.get(1)?.enabled).toBe(false);
     expect(fixture.actorRegistry.unload).toHaveBeenCalledWith(1);
-    expect(fixture.channelRegistry.stopActorChannels).toHaveBeenCalledWith(1);
+    expect(fixture.channelRegistry.removeActorChannels).toHaveBeenCalledWith(1);
     expect(fixture.runtime).toBeNull();
     expect(snapshot).toMatchObject({
       actorId: 1,
@@ -202,7 +204,7 @@ describe("RuntimeController", () => {
     const fixture = createFixture({
       enabled: false,
       runtime: createRuntime(),
-      ensureStarted: async () => {
+      refreshActorChannels: async () => {
         throw new Error("channel failed");
       },
     });
@@ -213,7 +215,7 @@ describe("RuntimeController", () => {
 
     expect(fixture.actors.get(1)?.enabled).toBe(false);
     expect(fixture.actorRegistry.unload).toHaveBeenCalledWith(1);
-    expect(fixture.channelRegistry.stopActorChannels).toHaveBeenCalledWith(1);
+    expect(fixture.channelRegistry.removeActorChannels).toHaveBeenCalledWith(1);
     expect(fixture.events.at(-1)?.data).toEqual(
       expect.objectContaining({ reason: "enable:rollback", status: "offline" }),
     );
@@ -234,7 +236,9 @@ describe("RuntimeController", () => {
 
     expect(fixture.actors.get(1)?.enabled).toBe(true);
     expect(fixture.actorRegistry.ensure).toHaveBeenCalledWith(1);
-    expect(fixture.channelRegistry.ensureStarted).toHaveBeenCalledWith(1);
+    expect(fixture.channelRegistry.refreshActorChannels).toHaveBeenCalledWith(
+      1,
+    );
     expect(fixture.events.at(-1)?.data).toEqual(
       expect.objectContaining({ reason: "disable:rollback", status: "online" }),
     );
