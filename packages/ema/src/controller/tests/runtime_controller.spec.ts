@@ -139,6 +139,19 @@ describe("RuntimeController", () => {
     expect(fixture.actorRegistry.ensure).not.toHaveBeenCalled();
   });
 
+  test("maps awake actors to online even while their worker is busy", async () => {
+    const runtime = createRuntime({ status: "awake", busy: true });
+    const fixture = createFixture({
+      enabled: true,
+      runtime,
+    });
+
+    const snapshot = await fixture.controller.getSnapshot(1);
+
+    expect(snapshot.status).toBe("online");
+    expect(runtime.isBusy).not.toHaveBeenCalled();
+  });
+
   test("rejects runtime switches while the actor is preparing", async () => {
     const fixture = createFixture({
       enabled: true,

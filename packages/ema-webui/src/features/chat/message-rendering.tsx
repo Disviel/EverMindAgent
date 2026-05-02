@@ -56,7 +56,7 @@ export function renderMessageContents(contents: InputContent[]) {
 
     return (
       <p key={index} className={styles.attachmentText}>
-        {content.mimeType}
+        {content.text?.trim() || content.mimeType}
       </p>
     );
   });
@@ -91,6 +91,9 @@ export function buildReplyPreview(
     source.contents
       .map((content) => {
         if (content.type === "text") {
+          return content.text.trim();
+        }
+        if (content.text?.trim()) {
           return content.text.trim();
         }
         if (content.mimeType.startsWith("image/")) {
@@ -198,5 +201,3 @@ export function renderMessageId(message: ChatMessageViewModel) {
     </span>
   );
 }
-
-

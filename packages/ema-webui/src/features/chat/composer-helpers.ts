@@ -369,6 +369,9 @@ export function formatContentsPreviewForLatest(contents: InputContent[]) {
         if (content.type === "text") {
           return content.text.trim();
         }
+        if (content.text?.trim()) {
+          return content.text.trim();
+        }
         if (content.mimeType.startsWith("image/")) {
           return "[图片]";
         }
@@ -398,6 +401,6 @@ export async function composerImageToInputContent(
     type: "inline_data",
     mimeType: image.mimeType,
     data: await readFileAsBase64(image.file),
+    text: "[图片]",
   };
 }
-

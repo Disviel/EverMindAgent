@@ -40,6 +40,7 @@ export interface InlineDataItem {
   type: "inline_data";
   mimeType: MIME;
   data: string;
+  text?: string;
 }
 
 export type InputContent = TextItem | InlineDataItem;

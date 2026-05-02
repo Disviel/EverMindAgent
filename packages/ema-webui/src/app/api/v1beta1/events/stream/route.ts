@@ -19,11 +19,16 @@ export async function GET(request: Request) {
       request,
       filter: (event) =>
         event.type !== "conversation.message.created" &&
+        event.type !== "conversation.typing.changed" &&
         eventMatchesTopics(event, topics),
       subscribe: (handler) =>
         server.bus.subscribe((event) => {
           const webEvent = toWebBusEvent(event);
-          if (!webEvent || webEvent.type === "conversation.message.created") {
+          if (
+            !webEvent ||
+            webEvent.type === "conversation.message.created" ||
+            webEvent.type === "conversation.typing.changed"
+          ) {
             return;
           }
           handler(webEvent);

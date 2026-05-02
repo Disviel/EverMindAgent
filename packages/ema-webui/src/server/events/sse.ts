@@ -54,10 +54,12 @@ export function createSubscribedSseStream({
   request,
   filter,
   subscribe,
+  initialEvents = [],
 }: {
   request: Request;
   filter: (event: EmaKnownEvent) => boolean;
   subscribe: SseSubscribe;
+  initialEvents?: EmaKnownEvent[];
 }) {
   const encoder = new TextEncoder();
 
@@ -93,6 +95,9 @@ export function createSubscribedSseStream({
 
       unsubscribe = subscribe(onEvent);
       send(`: connected ${Date.now()}\n\n`);
+      for (const event of initialEvents) {
+        onEvent(event);
+      }
       request.signal.addEventListener("abort", cleanup, { once: true });
     },
   });

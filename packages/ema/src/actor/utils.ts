@@ -1,4 +1,4 @@
-import { collapseContents, type UserMessage } from "../shared/schema";
+import { expandContentsForModel, type UserMessage } from "../shared/schema";
 import { formatTimestamp } from "../shared/utils";
 import { formatReplyRef } from "../channel";
 import type { ActorInput } from "./base";
@@ -30,7 +30,7 @@ export function buildUserMessageFromActorInput(
           type: "text",
           text: `<chat ${metadata.join(" ")}>`,
         },
-        ...collapseContents(input.inputs, true),
+        ...expandContentsForModel(input.inputs),
         { type: "text", text: `</chat>` },
       ],
     };
@@ -39,7 +39,7 @@ export function buildUserMessageFromActorInput(
     role: "user",
     contents: [
       { type: "text", text: `<system time="${time}">` },
-      ...collapseContents(input.inputs, true),
+      ...expandContentsForModel(input.inputs),
       { type: "text", text: `</system>` },
     ],
   };

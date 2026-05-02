@@ -17,7 +17,7 @@ export interface ActorLatestPreviewState {
 const statusText: Record<ActorRuntimeStatus, string> = {
   sleeping: "睡眠",
   preparing: "准备中",
-  online: "空闲",
+  online: "在线",
   busy: "忙碌",
   offline: "离线",
 };

@@ -81,6 +81,13 @@ export class Actor {
     return this.currentConversationId !== null || this.currentWorker !== null;
   }
 
+  isProcessingConversation(conversationId: number): boolean {
+    return (
+      this.currentConversationId === conversationId &&
+      this.currentWorker !== null
+    );
+  }
+
   isPreparing(): boolean {
     return this.status === "switching" || this.bootInitPromise !== null;
   }
@@ -365,6 +372,7 @@ export class Actor {
       conversationId,
       session: worker.session,
     });
+    this.publishConversationTyping(conversationId, true);
     this.publishRuntimeStatus("conversation:acquired");
     worker.events.on("actorResponsed", (event) => {
       this.runDetached(
@@ -467,6 +475,7 @@ export class Actor {
         conversationId,
         ...(session ? { session } : {}),
       });
+      this.publishConversationTyping(conversationId, false);
     }
     this.publishRuntimeStatus("conversation:released");
   }
@@ -496,6 +505,21 @@ export class Actor {
         });
       },
     );
+  }
+
+  private publishConversationTyping(
+    conversationId: number,
+    typing: boolean,
+  ): void {
+    this.server.controller.chat
+      .publishConversationTyping(conversationId, typing)
+      .catch((error) => {
+        this.logger.warn("Failed to publish conversation typing", {
+          conversationId,
+          typing,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
   }
 }
 

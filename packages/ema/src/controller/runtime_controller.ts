@@ -177,5 +177,5 @@ function toRuntimeStatus(
   if (status === "sleep") {
     return "sleeping";
   }
-  return runtime.isBusy() ? "busy" : "online";
+  return "online";
 }

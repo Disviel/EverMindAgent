@@ -7,6 +7,9 @@ export interface SseSubscription {
 export function subscribeSse<T>(
   url: string,
   handler: SseHandler<T>,
+  options: {
+    onDisconnect?: () => void;
+  } = {},
 ): SseSubscription {
   let closed = false;
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -33,11 +36,13 @@ export function subscribeSse<T>(
     source.addEventListener("actor.latest_preview", source.onmessage);
     source.addEventListener("actor.unread.changed", source.onmessage);
     source.addEventListener("conversation.message.created", source.onmessage);
+    source.addEventListener("conversation.typing.changed", source.onmessage);
     source.addEventListener("channel.qq.connection.changed", source.onmessage);
     source.onopen = () => {
       retryDelay = 1000;
     };
     source.onerror = () => {
+      options.onDisconnect?.();
       source?.close();
       if (closed) {
         return;

@@ -7,6 +7,7 @@ import type {
   ChatHistoryResult,
   ConversationMessageStreamEvent,
   ConversationMessageStreamHandler,
+  ConversationTypingStreamEvent,
   SendWebMessageInput,
   SendWebMessageResult,
 } from "./types";
@@ -69,6 +70,7 @@ export class ChatController {
       return null;
     }
     const event: ConversationMessageStreamEvent = {
+      type: "message.created",
       actorId: conversation.actorId,
       conversationId,
       session: conversation.session,
@@ -77,14 +79,46 @@ export class ChatController {
         ? { correlationId: metadata.correlationId }
         : {}),
     };
-    const listeners = this.conversationListeners.get(conversationId);
-    if (listeners) {
-      for (const listener of listeners) {
-        listener(event);
-      }
-    }
+    this.publishConversationEvent(conversationId, event);
     await this.publishLatestPreview(conversation.actorId, message);
     return event;
+  }
+
+  async publishConversationTyping(
+    conversationId: number,
+    typing: boolean,
+  ): Promise<ConversationTypingStreamEvent | null> {
+    const conversation =
+      await this.server.dbService.conversationDB.getConversation(conversationId);
+    if (!conversation || typeof conversation.id !== "number") {
+      return null;
+    }
+    const event: ConversationTypingStreamEvent = {
+      type: "typing.changed",
+      actorId: conversation.actorId,
+      conversationId,
+      session: conversation.session,
+      typing,
+      updatedAt: Date.now(),
+    };
+    this.publishConversationEvent(conversationId, event);
+    return event;
+  }
+
+  async getConversationTypingSnapshot(
+    actorId: number,
+    session: string,
+  ): Promise<ConversationTypingStreamEvent> {
+    const conversation = await this.requireConversation(actorId, session);
+    const runtime = this.server.actorRegistry?.get(actorId) ?? null;
+    return {
+      type: "typing.changed",
+      actorId,
+      conversationId: conversation.id,
+      session: conversation.session,
+      typing: runtime?.isProcessingConversation(conversation.id) ?? false,
+      updatedAt: Date.now(),
+    };
   }
 
   async listHistory(input: ChatHistoryInput): Promise<ChatHistoryResult> {
@@ -196,6 +230,19 @@ export class ChatController {
     return conversation as typeof conversation & { id: number };
   }
 
+  private publishConversationEvent(
+    conversationId: number,
+    event: Parameters<ConversationMessageStreamHandler>[0],
+  ): void {
+    const listeners = this.conversationListeners.get(conversationId);
+    if (!listeners) {
+      return;
+    }
+    for (const listener of listeners) {
+      listener(event);
+    }
+  }
+
   private async publishLatestPreview(
     actorId: number,
     message: ConversationMessageEntity,
@@ -218,6 +265,9 @@ export function previewFromContents(contents: InputContent[]): string {
   const preview = contents
     .map((content) => {
       if (content.type === "text") {
+        return content.text.trim();
+      }
+      if (content.text?.trim()) {
         return content.text.trim();
       }
       if (content.mimeType.startsWith("image/")) {

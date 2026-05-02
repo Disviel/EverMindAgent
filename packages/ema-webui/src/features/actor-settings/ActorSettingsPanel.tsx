@@ -249,7 +249,7 @@ const activityStatusDescription: Record<ActorRuntimeStatus, string> = {
   offline: "角色未加载，不参与活动",
   sleeping: "角色已加载，当前处于睡眠",
   preparing: "角色状态变更中",
-  online: "角色已唤醒，当前空闲",
+  online: "角色已唤醒，当前在线",
   busy: "角色已唤醒，当前忙碌",
 };
 

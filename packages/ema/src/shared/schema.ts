@@ -77,6 +77,7 @@ export interface InlineDataItem {
   type: "inline_data";
   mimeType: MIME;
   data: string;
+  text?: string;
 }
 
 /**
@@ -145,24 +146,35 @@ export function isInlineDataItem(content: Content): content is InlineDataItem {
   return content.type === "inline_data";
 }
 
-/**
- * Collapses contents for prompt rendering.
- */
-export function collapseContents(
-  contents: InputContent[],
-  preserveInlineImages = true,
-): InputContent[] {
-  return contents.map((content): InputContent => {
-    if (
-      content.type === "text" ||
-      (preserveInlineImages && content.mimeType.startsWith("image/"))
-    ) {
+/** Formats inline media as text for contexts that cannot carry binary data. */
+export function formatInlineDataText(content: InlineDataItem): string {
+  const text = content.text?.trim();
+  return text ? `${text}（${content.mimeType}）` : `（${content.mimeType}）`;
+}
+
+/** Collapses multimodal contents into pure text contents for prompt rendering. */
+export function collapseContentsToText(contents: InputContent[]): TextItem[] {
+  return contents.map((content): TextItem => {
+    if (content.type === "text") {
       return content;
     }
     return {
       type: "text",
-      text: `（${content.mimeType}）`,
+      text: formatInlineDataText(content),
     };
+  });
+}
+
+/**
+ * Expands multimodal contents for model messages by exposing media metadata as
+ * text while preserving the original inline payload for multimodal providers.
+ */
+export function expandContentsForModel(contents: InputContent[]): InputContent[] {
+  return contents.flatMap((content): InputContent[] => {
+    if (content.type === "text") {
+      return [content];
+    }
+    return [{ type: "text", text: formatInlineDataText(content) }, content];
   });
 }
 

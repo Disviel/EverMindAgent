@@ -1,4 +1,8 @@
-export { collapseContents } from "./schema";
+export {
+  collapseContentsToText,
+  expandContentsForModel,
+  formatInlineDataText,
+} from "./schema";
 export { parseReplyRef, formatReplyRef } from "../channel/utils";
 
 export type {

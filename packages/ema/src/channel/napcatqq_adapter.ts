@@ -430,11 +430,17 @@ export class NapCatQQAdapter implements ChannelAdapter<unknown, string> {
     data: Record<string, unknown> | undefined,
     rawElement?: NapCatQQRawElement,
   ): Promise<InputContent[]> {
-    const mediaInputs = await this.resolveMediaInputs(payload, "image", data);
+    const marketFaceText = this.resolveMarketFaceText(data, rawElement);
+    const mediaText = marketFaceText ? `[QQ表情：${marketFaceText}]` : undefined;
+    const mediaInputs = await this.resolveMediaInputs(
+      payload,
+      "image",
+      data,
+      mediaText,
+    );
     if (mediaInputs.some((input) => input.type === "inline_data")) {
       return mediaInputs;
     }
-    const marketFaceText = this.resolveMarketFaceText(data, rawElement);
     if (!marketFaceText) {
       return mediaInputs;
     }
@@ -450,10 +456,11 @@ export class NapCatQQAdapter implements ChannelAdapter<unknown, string> {
     payload: NapCatQQMessageEvent,
     kind: "image" | "file" | "video" | "audio",
     data: Record<string, unknown> | undefined,
+    mediaTextOverride?: string,
   ): Promise<InputContent[]> {
     const hint = this.resolveMediaHint(data);
     const rawMimeType = this.readString(data?.mimeType);
-    const mediaText = this.buildMediaText(kind, data);
+    const mediaText = mediaTextOverride ?? this.buildMediaText(kind, data);
     const base64 = this.extractBase64Payload(data);
     const mimeType = resolveSupportedMediaMimeType(rawMimeType, hint);
 
@@ -511,7 +518,7 @@ export class NapCatQQAdapter implements ChannelAdapter<unknown, string> {
     mediaLabel: string,
     inline: Extract<InputContent, { type: "inline_data" }>,
   ): InputContent[] {
-    return [{ type: "text", text: mediaLabel }, inline];
+    return [{ ...inline, text: mediaLabel }];
   }
 
   private async fetchInlineDataFromURL(

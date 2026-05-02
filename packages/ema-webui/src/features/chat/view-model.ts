@@ -120,6 +120,9 @@ function formatContentsPreview(contents: InputContent[]) {
       if (content.type === "text") {
         return content.text;
       }
+      if (content.text?.trim()) {
+        return content.text;
+      }
       if (content.mimeType.startsWith("image/")) {
         return "[图片]";
       }

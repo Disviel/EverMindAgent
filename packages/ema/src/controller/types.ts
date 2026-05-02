@@ -129,6 +129,7 @@ export interface SendWebMessageResult {
 }
 
 export interface ConversationMessageStreamEvent {
+  type: "message.created";
   actorId: number;
   conversationId: number;
   session: string;
@@ -136,6 +137,19 @@ export interface ConversationMessageStreamEvent {
   correlationId?: string;
 }
 
+export interface ConversationTypingStreamEvent {
+  type: "typing.changed";
+  actorId: number;
+  conversationId: number;
+  session: string;
+  typing: boolean;
+  updatedAt: number;
+}
+
+export type ConversationStreamEvent =
+  | ConversationMessageStreamEvent
+  | ConversationTypingStreamEvent;
+
 export type ConversationMessageStreamHandler = (
-  event: ConversationMessageStreamEvent,
+  event: ConversationStreamEvent,
 ) => void;

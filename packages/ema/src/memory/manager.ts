@@ -22,9 +22,10 @@ import { stickerIdToInlineData } from "../skills/sticker-skill/utils";
 import { buildPromptFromBufferMessage, isActorChatInput } from "./utils";
 import { parseReplyRef, resolveSession } from "../channel";
 import type { Server } from "../server";
-import type { InlineDataItem } from "../shared/schema";
+import type { InlineDataItem, InputContent } from "../shared/schema";
 import { formatTimestamp, parseTimestamp } from "../shared/utils";
 import { skillsPrompt } from "../skills";
+import type { EmaReply } from "../tools/ema_reply_tool";
 
 /**
  * Memory manager implementation backed by database interfaces.
@@ -579,21 +580,7 @@ export class MemoryManager implements BufferStorage, ActorMemory {
           })(),
           contents:
             message.ema_reply.kind === "sticker"
-              ? [
-                  ...(message.ema_reply.mention_uids ?? []).map((uid) => ({
-                    type: "text" as const,
-                    text: `@(${uid})`,
-                  })),
-                  {
-                    type: "text" as const,
-                    text: await formatStickerDisplayText(
-                      message.ema_reply.content,
-                    ),
-                  },
-                  ...(await this.buildStickerInlineContents(
-                    message.ema_reply.content,
-                  )),
-                ]
+              ? await this.buildStickerReplyContents(message.ema_reply)
               : [
                   ...(message.ema_reply.mention_uids ?? []).map((uid) => ({
                     type: "text" as const,
@@ -619,16 +606,37 @@ export class MemoryManager implements BufferStorage, ActorMemory {
     });
   }
 
+  private async buildStickerReplyContents(
+    reply: EmaReply,
+  ): Promise<InputContent[]> {
+    const mentionContents = (reply.mention_uids ?? []).map((uid) => ({
+      type: "text" as const,
+      text: `@(${uid})`,
+    }));
+    const stickerText = await formatStickerDisplayText(reply.content);
+    const inlineContents = await this.buildStickerInlineContents(
+      reply.content,
+      stickerText,
+    );
+    return inlineContents.length > 0
+      ? [...mentionContents, ...inlineContents]
+      : [...mentionContents, { type: "text", text: stickerText }];
+  }
+
   /**
    * Builds inline image contents for one sticker message stored in history.
    * @param stickerId - Stable sticker identifier emitted by the model.
+   * @param stickerText - Text description used when this media is collapsed.
    * @returns Inline image contents, or an empty list when the asset cannot be resolved.
    */
   private async buildStickerInlineContents(
     stickerId: string,
+    stickerText: string,
   ): Promise<InlineDataItem[]> {
     try {
-      return [await stickerIdToInlineData(stickerId)];
+      return [
+        { ...(await stickerIdToInlineData(stickerId)), text: stickerText },
+      ];
     } catch (error) {
       this.logger.warn(
         `Failed to persist sticker inline data for '${stickerId}', storing text proxy only.`,
@@ -1051,7 +1059,10 @@ export class MemoryManager implements BufferStorage, ActorMemory {
           channel,
         },
       );
-    return bindings[0]?.uid ?? null;
+    if (bindings[0]?.uid) {
+      return bindings[0].uid;
+    }
+    return channel === "web" ? String(userId) : null;
   }
 
   private async getActorDisplayName(actorId: number): Promise<string> {

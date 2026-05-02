@@ -5,13 +5,16 @@ export function subscribeChatEvents({
   actorId,
   session,
   handler,
+  onDisconnect,
 }: {
   actorId: string;
   session: string;
   handler: (event: EmaKnownEvent) => void;
+  onDisconnect?: () => void;
 }) {
   return subscribeSse<EmaKnownEvent>(
     `/api/v1beta1/actors/${encodeURIComponent(actorId)}/conversations/${encodeURIComponent(session)}/stream`,
     handler,
+    { onDisconnect },
   );
 }

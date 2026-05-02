@@ -16,6 +16,7 @@ import {
   isFunctionResponse,
   isInlineDataItem,
   isTextItem,
+  formatInlineDataText,
 } from "../shared/schema";
 import type {
   Content,
@@ -71,27 +72,11 @@ export class OpenAIClient extends LLMClientBase implements SchemaAdapter {
           continue;
         }
         if (isTextItem(content)) {
-          const lastItem = items[items.length - 1];
-          if (
-            lastItem &&
-            lastItem.type === "message" &&
-            lastItem.role === "user" &&
-            Array.isArray(lastItem.content)
-          ) {
-            lastItem.content.push({
-              type: "input_text",
-              text: content.text,
-            });
-          } else {
-            items.push({
-              type: "message",
-              role: "user",
-              content: [{ type: "input_text", text: content.text }],
-            });
-          }
+          this.appendTextContent(items, "user", content.text);
           continue;
         }
         if (isInlineDataItem(content)) {
+          this.appendTextContent(items, "user", formatInlineDataText(content));
           continue;
         }
         /** Additional content types can be handled here. */
@@ -110,27 +95,15 @@ export class OpenAIClient extends LLMClientBase implements SchemaAdapter {
           continue;
         }
         if (isTextItem(content)) {
-          const lastItem = items[items.length - 1];
-          if (
-            lastItem &&
-            lastItem.type === "message" &&
-            lastItem.role === "assistant" &&
-            Array.isArray(lastItem.content)
-          ) {
-            lastItem.content.push({
-              type: "input_text",
-              text: content.text,
-            });
-          } else {
-            items.push({
-              type: "message",
-              role: "assistant",
-              content: [{ type: "input_text", text: content.text }],
-            });
-          }
+          this.appendTextContent(items, "assistant", content.text);
           continue;
         }
         if (isInlineDataItem(content)) {
+          this.appendTextContent(
+            items,
+            "assistant",
+            formatInlineDataText(content),
+          );
           continue;
         }
         /** Additional content types can be handled here. */
@@ -138,6 +111,31 @@ export class OpenAIClient extends LLMClientBase implements SchemaAdapter {
       return items;
     }
     throw new Error(`Unsupported message role: ${(message as Message).role}`);
+  }
+
+  private appendTextContent(
+    items: OpenAIMessage[],
+    role: "user" | "assistant",
+    text: string,
+  ): void {
+    const lastItem = items[items.length - 1];
+    if (
+      lastItem &&
+      lastItem.type === "message" &&
+      lastItem.role === role &&
+      Array.isArray(lastItem.content)
+    ) {
+      lastItem.content.push({
+        type: "input_text",
+        text,
+      });
+      return;
+    }
+    items.push({
+      type: "message",
+      role,
+      content: [{ type: "input_text", text }],
+    });
   }
 
   /** Map tool definition to OpenAI Responses tool schema. */

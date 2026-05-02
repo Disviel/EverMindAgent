@@ -84,6 +84,9 @@ export function previewFromContents(contents: InputContent[]) {
         if (content.type === "text") {
           return content.text.trim();
         }
+        if (content.text?.trim()) {
+          return content.text.trim();
+        }
         if (content.mimeType.startsWith("image/")) {
           return "[图片]";
         }

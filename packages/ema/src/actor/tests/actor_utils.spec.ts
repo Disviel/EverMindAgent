@@ -3,7 +3,7 @@ import { describe, expect, test } from "vitest";
 import { buildUserMessageFromActorInput } from "../index";
 
 describe("buildUserMessageFromActorInput", () => {
-  test("preserves inline image data in user messages", () => {
+  test("preserves inline image data and exposes its text to the model", () => {
     const message = buildUserMessageFromActorInput(
       {
         kind: "chat",
@@ -17,11 +17,11 @@ describe("buildUserMessageFromActorInput", () => {
         },
         inputs: [
           { type: "text", text: "看看这个" },
-          { type: "text", text: "[图片：test.jpg]" },
           {
             type: "inline_data",
             mimeType: "image/jpeg",
             data: "base64-data",
+            text: "[图片：test.jpg]",
           },
         ],
         time: Date.UTC(2026, 2, 19, 0, 0, 0),
@@ -38,11 +38,12 @@ describe("buildUserMessageFromActorInput", () => {
     });
     expect(message.contents.slice(1)).toEqual([
       { type: "text", text: "看看这个" },
-      { type: "text", text: "[图片：test.jpg]" },
+      { type: "text", text: "[图片：test.jpg]（image/jpeg）" },
       {
         type: "inline_data",
         mimeType: "image/jpeg",
         data: "base64-data",
+        text: "[图片：test.jpg]",
       },
       {
         type: "text",
@@ -51,7 +52,7 @@ describe("buildUserMessageFromActorInput", () => {
     ]);
   });
 
-  test("keeps generated text label for non-image media and omits inline data", () => {
+  test("preserves non-image inline data and exposes its text to the model", () => {
     const message = buildUserMessageFromActorInput(
       {
         kind: "chat",
@@ -65,11 +66,11 @@ describe("buildUserMessageFromActorInput", () => {
         },
         inputs: [
           { type: "text", text: "先看这个文件" },
-          { type: "text", text: "[文件：test.pdf]" },
           {
             type: "inline_data",
             mimeType: "application/pdf",
             data: "base64-data",
+            text: "[文件：test.pdf]",
           },
         ],
         time: Date.UTC(2026, 2, 19, 0, 0, 1),
@@ -85,8 +86,13 @@ describe("buildUserMessageFromActorInput", () => {
     });
     expect(message.contents.slice(1)).toEqual([
       { type: "text", text: "先看这个文件" },
-      { type: "text", text: "[文件：test.pdf]" },
-      { type: "text", text: "（application/pdf）" },
+      { type: "text", text: "[文件：test.pdf]（application/pdf）" },
+      {
+        type: "inline_data",
+        mimeType: "application/pdf",
+        data: "base64-data",
+        text: "[文件：test.pdf]",
+      },
       {
         type: "text",
         text: "</chat>",

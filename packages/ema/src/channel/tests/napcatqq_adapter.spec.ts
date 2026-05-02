@@ -250,13 +250,10 @@ describe("NapCatQQAdapter", () => {
         expect.objectContaining({
           inputs: [
             {
-              type: "text",
-              text: "[图片：test.jpg]",
-            },
-            {
               type: "inline_data",
               mimeType: "image/jpeg",
               data: Buffer.from("fake-image").toString("base64"),
+              text: "[图片：test.jpg]",
             },
           ],
         }),
@@ -315,13 +312,10 @@ describe("NapCatQQAdapter", () => {
         expect.objectContaining({
           inputs: [
             {
-              type: "text",
-              text: "[图片：4BB917025DEDBDD6040477E3ADE659C5.jpg]",
-            },
-            {
               type: "inline_data",
               mimeType: "image/jpeg",
               data: Buffer.from("animated-emoji-jpg").toString("base64"),
+              text: "[图片：4BB917025DEDBDD6040477E3ADE659C5.jpg]",
             },
           ],
         }),
@@ -355,13 +349,10 @@ describe("NapCatQQAdapter", () => {
         expect.objectContaining({
           inputs: [
             {
-              type: "text",
-              text: "[文件]",
-            },
-            {
               type: "inline_data",
               mimeType: "application/pdf",
               data: "ZmFrZS1wZGY=",
+              text: "[文件]",
             },
           ],
         }),
@@ -453,13 +444,10 @@ describe("NapCatQQAdapter", () => {
         expect.objectContaining({
           inputs: [
             {
-              type: "text",
-              text: "[文件：测试文件.pdf]",
-            },
-            {
               type: "inline_data",
               mimeType: "application/pdf",
               data: Buffer.from("fake-pdf").toString("base64"),
+              text: "[文件：测试文件.pdf]",
             },
           ],
         }),

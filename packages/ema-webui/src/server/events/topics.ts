@@ -14,7 +14,10 @@ export function eventMatchesConversation(
   conversationId: string,
   actorId?: string,
 ) {
-  if (event.type !== "conversation.message.created") {
+  if (
+    event.type !== "conversation.message.created" &&
+    event.type !== "conversation.typing.changed"
+  ) {
     return false;
   }
   if (event.conversationId !== conversationId) {

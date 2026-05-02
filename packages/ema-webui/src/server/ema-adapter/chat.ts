@@ -2,6 +2,7 @@ import "server-only";
 
 import type {
   ConversationMessageStreamEvent,
+  ConversationTypingStreamEvent,
   InputContent as CoreInputContent,
 } from "ema";
 import type {
@@ -12,6 +13,7 @@ import type {
 } from "@/types/chat/v1beta1";
 import type {
   ConversationMessageCreatedEventData,
+  ConversationTypingChangedEventData,
   EmaEvent,
 } from "@/types/events/v1beta1";
 import { toWebActorId, toWebConversationId } from "./ids";
@@ -60,6 +62,20 @@ export function toConversationMessageCreatedEvent(
     ...(event.correlationId ? { correlationId: event.correlationId } : {}),
     data: {
       message: toWebConversationMessage(event.message),
+    },
+  };
+}
+
+export function toConversationTypingChangedEvent(
+  event: ConversationTypingStreamEvent,
+): EmaEvent<"conversation.typing.changed", ConversationTypingChangedEventData> {
+  return {
+    type: "conversation.typing.changed",
+    ts: event.updatedAt,
+    actorId: toWebActorId(event.actorId),
+    conversationId: toWebConversationId(event.session),
+    data: {
+      typing: event.typing,
     },
   };
 }

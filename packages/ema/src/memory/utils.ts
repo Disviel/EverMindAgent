@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { collapseContents, type TextItem } from "../shared/schema";
+import { collapseContentsToText } from "../shared/schema";
 import { formatTimestamp } from "../shared/utils";
 import { formatReplyRef } from "../channel";
 import {
@@ -71,7 +71,7 @@ export function buildPromptFromBufferMessage(
   message: BufferMessage,
   ownerUid: string | null,
 ): string {
-  const contents = (collapseContents(message.contents, false) as TextItem[])
+  const contents = collapseContentsToText(message.contents)
     .map((part) => part.text)
     .join(" ")
     .replaceAll("\n", " ");

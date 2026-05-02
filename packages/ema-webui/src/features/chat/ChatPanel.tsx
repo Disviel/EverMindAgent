@@ -119,7 +119,7 @@ const DEFAULT_WEB_CHAT_SESSION = "web-chat-1";
 const statusText: Record<ActorRuntimeStatus, string> = {
   sleeping: "睡眠",
   preparing: "准备中",
-  online: "空闲",
+  online: "在线",
   busy: "忙碌",
   offline: "离线",
 };
@@ -271,6 +271,7 @@ export function ChatPanel({
   const [latestScrollState, setLatestScrollState] =
     useState<LatestScrollState>("latest");
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
+  const [conversationTyping, setConversationTyping] = useState(false);
   const [composerReplyTo, setComposerReplyTo] =
     useState<MessageReplyRef | null>(null);
   const composerImageCount = getComposerImageCount(
@@ -1805,6 +1806,10 @@ export function ChatPanel({
   }, [inlineImagesById]);
 
   useEffect(() => {
+    setConversationTyping(false);
+  }, [actor.id]);
+
+  useEffect(() => {
     latestMessagesRef.current = messages;
     nextLocalMsgIdRef.current = Math.max(
       nextLocalMsgIdRef.current,
@@ -1814,21 +1819,33 @@ export function ChatPanel({
 
   useEffect(() => {
     if (historyStage !== "ready") {
+      setConversationTyping(false);
       return undefined;
     }
 
+    setConversationTyping(false);
     const subscription = subscribeChatEvents({
       actorId: actor.id,
       session: DEFAULT_WEB_CHAT_SESSION,
       handler: (event) => {
+        if (event.type === "conversation.typing.changed") {
+          setConversationTyping(event.data.typing);
+          return;
+        }
         if (event.type !== "conversation.message.created") {
           return;
         }
         appendStreamMessage(event.data.message, event.correlationId);
       },
+      onDisconnect: () => {
+        setConversationTyping(false);
+      },
     });
 
-    return () => subscription.close();
+    return () => {
+      setConversationTyping(false);
+      subscription.close();
+    };
   }, [actor.id, appendStreamMessage, historyStage]);
 
   useEffect(() => {
@@ -2045,6 +2062,11 @@ export function ChatPanel({
     messageByMsgId,
     userName,
   );
+  const showConversationTyping =
+    conversationTyping && actor.status === "online";
+  const chatStatusLabel = showConversationTyping
+    ? "正在输入..."
+    : statusText[actor.status];
 
   return (
     <div className={styles.chatShell}>
@@ -2053,11 +2075,26 @@ export function ChatPanel({
           <div className={styles.chatTitleLine}>
             <span
               className={`${styles.chatTitleStatus} ${styles[actor.status]}`}
-              aria-label={statusText[actor.status]}
+              aria-label={chatStatusLabel}
             />
             <h1>{actor.name}</h1>
-            <span className={styles.chatInlineStatus}>
-              {statusText[actor.status]}
+            <span
+              className={`${styles.chatInlineStatus} ${
+                showConversationTyping ? styles.chatInlineStatusTyping : ""
+              }`}
+            >
+              {showConversationTyping ? (
+                <>
+                  正在输入
+                  <span className={styles.typingDots} aria-hidden="true">
+                    <span>.</span>
+                    <span>.</span>
+                    <span>.</span>
+                  </span>
+                </>
+              ) : (
+                statusText[actor.status]
+              )}
             </span>
           </div>
         </div>

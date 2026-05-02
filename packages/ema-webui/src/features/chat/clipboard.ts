@@ -308,7 +308,7 @@ export function buildMessageClipboardContent(
         textFragments.push("\n");
         htmlFragments.push("<br>");
       }
-      textFragments.push("[图片]");
+      textFragments.push(content.text?.trim() || "[图片]");
       textFragments.push("\n");
       imageSources.push(imageSrc);
       htmlFragments.push(
@@ -323,8 +323,9 @@ export function buildMessageClipboardContent(
         textFragments.push("\n");
         htmlFragments.push("<br>");
       }
-      textFragments.push(content.mimeType);
-      htmlFragments.push(escapeClipboardHtml(content.mimeType));
+      const text = content.text?.trim() || content.mimeType;
+      textFragments.push(text);
+      htmlFragments.push(escapeClipboardHtml(text));
       hasUserText = true;
     }
   });
@@ -347,4 +348,3 @@ export function buildMessageClipboardContent(
     hasUserText,
   };
 }
-

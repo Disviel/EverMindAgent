@@ -40,6 +40,14 @@ function createActor(
         : hasUnprocessedActivityBeforeDay,
   );
   const server = {
+    controller: {
+      chat: {
+        publishConversationTyping: vi.fn(async () => null),
+      },
+      runtime: {
+        publishStatus: vi.fn(async () => {}),
+      },
+    },
     memoryManager: {
       hasUnprocessedActivityBeforeDay: hasUnprocessedActivityBeforeDayMock,
     },
@@ -182,5 +190,26 @@ describe("Actor boot init", () => {
     >;
     expect(runActorBackgroundJob).toHaveBeenCalledTimes(1);
     expect(calls[0]![1].task).toBe("wake");
+  });
+
+  test("reports processing only for the currently held conversation", async () => {
+    const { actor } = createActor([]);
+
+    expect(actor.isProcessingConversation(1)).toBe(false);
+
+    (actor as any).currentConversationId = 1;
+    (actor as any).currentWorker = {
+      session: "web-chat-1",
+      events: {
+        removeAllListeners: vi.fn(),
+      },
+    };
+
+    expect(actor.isProcessingConversation(1)).toBe(true);
+    expect(actor.isProcessingConversation(2)).toBe(false);
+
+    await actor.dispose();
+
+    expect(actor.isProcessingConversation(1)).toBe(false);
   });
 });

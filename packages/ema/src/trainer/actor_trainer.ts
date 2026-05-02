@@ -15,7 +15,7 @@ import type {
   ActorTrainingMessage,
 } from "./base";
 import type { EmaReply } from "../tools/ema_reply_tool";
-import { collapseContents, type TextItem } from "../shared/schema";
+import { collapseContentsToText } from "../shared/schema";
 import {
   buildTrainingCheckpointSnapshot,
   resolveCheckpointRoot,
@@ -394,7 +394,7 @@ export class ActorTrainer {
   private stringifyInputContents(
     inputs: NormalizedTrainingInput["inputs"],
   ): string {
-    return (collapseContents(inputs, false) as TextItem[])
+    return collapseContentsToText(inputs)
       .map((part) => part.text)
       .join(" ")
       .replaceAll("\n", " ");

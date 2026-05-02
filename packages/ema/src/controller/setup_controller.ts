@@ -21,6 +21,7 @@ export class SetupController {
 
   async commit(input: SetupCommitInput): Promise<SetupStatus> {
     const now = Date.now();
+    const ownerId = input.owner.id ?? DEFAULT_WEB_USER_ID;
     await this.server.dbService.globalConfigDB.upsertGlobalConfig({
       ...input.globalConfig,
       id: "global",
@@ -29,10 +30,16 @@ export class SetupController {
       updatedAt: now,
     });
     await this.server.dbService.userDB.upsertUser({
-      id: input.owner.id ?? DEFAULT_WEB_USER_ID,
+      id: ownerId,
       name: input.owner.name.trim(),
       description: input.owner.description ?? "",
       avatar: input.owner.avatar ?? "",
+      updatedAt: now,
+    });
+    await this.server.dbService.externalIdentityBindingDB.upsertExternalIdentityBinding({
+      userId: ownerId,
+      channel: "web",
+      uid: String(ownerId),
       updatedAt: now,
     });
     const loaded = await this.server.reloadGlobalConfig();

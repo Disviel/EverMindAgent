@@ -14,6 +14,7 @@ export type EmaEventTopic =
   | "actor.latest_preview"
   | "actor.unread.changed"
   | "conversation.message.created"
+  | "conversation.typing.changed"
   | "channel.qq.connection.changed";
 
 export type EmaEvent<T extends EmaEventTopic = EmaEventTopic, D = unknown> = {
@@ -50,6 +51,10 @@ export interface ConversationMessageCreatedEventData {
   message: ConversationMessage;
 }
 
+export interface ConversationTypingChangedEventData {
+  typing: boolean;
+}
+
 export interface ChannelQqConnectionChangedEventData {
   transportStatus: ActorQQTransportStatus;
   blockedBy: ActorQQBlockedBy;
@@ -67,4 +72,5 @@ export type EmaKnownEvent =
   | EmaEvent<"actor.latest_preview", ActorLatestPreviewEventData>
   | EmaEvent<"actor.unread.changed", ActorUnreadChangedEventData>
   | EmaEvent<"conversation.message.created", ConversationMessageCreatedEventData>
+  | EmaEvent<"conversation.typing.changed", ConversationTypingChangedEventData>
   | EmaEvent<"channel.qq.connection.changed", ChannelQqConnectionChangedEventData>;
