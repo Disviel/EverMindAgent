@@ -10,6 +10,7 @@ import type {
   ActorQQConnectionSyncReason,
   ActorQQConfig,
   ActorQQSaveResponse,
+  ActorSettingsResponse,
   ActorWebSearchConfig,
   ActorWebSearchSaveResponse,
   DashboardOverviewResponse,
@@ -77,6 +78,15 @@ export function createActor(request: CreateActorRequest) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
   });
+}
+
+export function getActorSettings(actorId: string) {
+  return fetchJson<ActorSettingsResponse>(
+    `/api/v1beta1/actors/${encodeURIComponent(actorId)}/settings`,
+    {
+      method: "GET",
+    },
+  );
 }
 
 export function updateActorActivity(actorId: string, enabled: boolean) {

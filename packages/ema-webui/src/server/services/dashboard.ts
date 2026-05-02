@@ -11,12 +11,15 @@ import {
   DEFAULT_OWNER_USER_ID,
   toCoreActorId,
 } from "@/server/ema-adapter/ids";
-import { toWebSettings } from "@/server/ema-adapter/settings";
+import {
+  toWebLlmConfig,
+  toWebQqConfig,
+  toWebSearchConfig,
+} from "@/server/ema-adapter/settings";
 import { ensureEmaServer } from "@/server/ema-server";
 import { syncQqConnection } from "@/server/behaviors/qq-connect";
 import { createEvent, publishEvent } from "@/server/events/bus";
 import {
-  createActorRecord,
   getActorRecord,
   listActorSummaries,
   saveActorLlmSettings,
@@ -45,6 +48,7 @@ import type {
   ActorQQSaveRequest,
   ActorQQSaveResponse,
   ActorSettingsResponse,
+  ActorSettingsSnapshot,
   ActorSettingsCheckErrorCode,
   ActorSettingsDiagnostics,
   ActorSettingsSaveErrorCode,
@@ -57,7 +61,6 @@ import type {
 } from "@/types/dashboard/v1beta1";
 
 const API_VERSION = "v1beta1" as const;
-const LLM_PROBE_PASS_RATE = 0.66;
 const LLM_SAVE_PASS_RATE = 0.82;
 const WEB_SEARCH_SAVE_PASS_RATE = 0.86;
 const QQ_SAVE_PASS_RATE = 0.86;
@@ -66,6 +69,11 @@ const EMPTY_QQ_CONFIG: ActorQQConfig = {
   wsUrl: "",
   accessToken: "",
   conversations: [],
+};
+const EMPTY_CORE_QQ_CONFIG = {
+  enabled: false,
+  wsUrl: "",
+  accessToken: "",
 };
 
 const sleep = (duration: number) =>
@@ -157,6 +165,12 @@ export async function buildActorListResponse(): Promise<ActorListResponse> {
 export async function buildActorSettingsResponse(
   actorId: string,
 ): Promise<ActorSettingsResponse> {
+  const server = await ensureEmaServer();
+  const globalDefaults = server.controller.settings.getGlobalDefaults();
+  const global = {
+    llm: toWebLlmConfig(globalDefaults.llm),
+    webSearch: toWebSearchConfig(globalDefaults.webSearch),
+  };
   const existingActor = await getActorRecord(actorId);
   if (existingActor) {
     return {
@@ -171,30 +185,41 @@ export async function buildActorSettingsResponse(
           ),
         },
       },
+      global,
     };
   }
 
-  try {
-    const coreActorId = toCoreActorId(actorId);
-    const server = await ensureEmaServer();
-    const [settings, qqConversations] = await Promise.all([
-      server.controller.settings.getEffective(coreActorId),
-      server.controller.channel.listQqConversations(coreActorId),
-    ]);
-    return {
-      apiVersion: API_VERSION,
-      actorId,
-      settings: toWebSettings(settings, qqConversations),
-    };
-  } catch {
+  const coreActorId = toCoreActorId(actorId);
+  const actor = await server.dbService.actorDB.getActor(coreActorId);
+  if (!actor) {
     return {
       apiVersion: API_VERSION,
       actorId,
       settings: {
-        qq: { ...EMPTY_QQ_CONFIG, conversations: [] },
+          qq: { ...EMPTY_QQ_CONFIG, conversations: [] },
       },
+      global,
     };
   }
+
+  const qqConversations =
+    await server.controller.channel.listQqConversations(coreActorId);
+  const settings: ActorSettingsSnapshot = {
+    ...(actor.llmConfig ? { llm: toWebLlmConfig(actor.llmConfig) } : {}),
+    ...(actor.webSearchConfig
+      ? { webSearch: toWebSearchConfig(actor.webSearchConfig) }
+      : {}),
+    qq: toWebQqConfig(
+      actor.channelConfig?.qq ?? EMPTY_CORE_QQ_CONFIG,
+      qqConversations,
+    ),
+  };
+  return {
+    apiVersion: API_VERSION,
+    actorId,
+    settings,
+    global,
+  };
 }
 
 export async function buildActorQqChannelResponse(
@@ -393,20 +418,17 @@ function qqConversationError(
 export async function createActorService(
   request: CreateActorRequest,
 ): Promise<CreateActorResponse> {
-  const actor = await createActorRecord({
-    ...request,
-    name: request.name.trim() || "未命名",
+  const server = await ensureEmaServer();
+  const details = await server.controller.actor.create({
+    ownerUserId: DEFAULT_OWNER_USER_ID,
+    name: request.name,
+    avatarUrl: request.avatarUrl,
+    roleBook: request.roleBook,
+    sleepSchedule: request.sleepSchedule,
   });
-  publishEvent(
-    createEvent({
-      type: "actor.created",
-      actorId: actor.id,
-      data: { actor },
-    }),
-  );
   return {
     apiVersion: API_VERSION,
-    actor,
+    actor: toActorSummary(details),
   };
 }
 
@@ -590,31 +612,17 @@ function createSaveResponse<TTarget extends "llm" | "webSearch" | "qq">({
   } as const;
 }
 
-function buildActorLlmProviderErrorDetails(provider: string): {
-  code: ActorSettingsCheckErrorCode;
-  details: ActorSettingsDiagnostics;
-} {
-  if (randomInt(0, 1) === 0) {
-    return {
-      code: "LLM_PROVIDER_ERROR",
-      details: {
-        provider,
-        httpStatus: 401,
-        providerErrorType: "authentication_error",
-        providerErrorCode: "invalid_api_key",
-        providerErrorMessage: "API key is invalid or expired",
-      },
-    };
-  }
-  return {
-    code: "LLM_NETWORK_ERROR",
-    details: {
-      provider,
-      networkErrorName: "LLM_PROBE_TIMEOUT",
-      networkErrorMessage: "request timed out before receiving response headers",
-      timeoutMs: 45000,
-    },
-  };
+function classifyActorLlmProbeError(message: string): ActorSettingsCheckErrorCode {
+  const normalized = message.toLowerCase();
+  const networkLike =
+    normalized.includes("timeout") ||
+    normalized.includes("network") ||
+    normalized.includes("fetch") ||
+    normalized.includes("econn") ||
+    normalized.includes("enotfound") ||
+    normalized.includes("etimedout") ||
+    normalized.includes("abort");
+  return networkLike ? "LLM_NETWORK_ERROR" : "LLM_PROVIDER_ERROR";
 }
 
 export async function runActorLlmServiceCheck(
@@ -623,39 +631,38 @@ export async function runActorLlmServiceCheck(
 ): Promise<ActorLlmCheckResponse> {
   const startedAt = now();
   const config = request.config;
-  await sleep(randomInt(560, 940));
-
-  const invalid = validateActorLlmConfig(config);
   const selected = selectedLlmConfig(config);
-  if (invalid) {
-    return createActorLlmCheckResponse({
-      actorId,
-      startedAt,
-      ok: false,
-      errorCode: invalid.code,
-      errorDetails: invalid.details,
-      retryable: invalid.code !== "UNSUPPORTED",
-      diagnostics: {
-        provider: config.provider,
-        model: selected.model,
-        endpoint: hostFromUrl(selected.baseUrl),
-      },
-    });
-  }
-
-  const ok = Math.random() < LLM_PROBE_PASS_RATE;
-  const error = ok ? null : buildActorLlmProviderErrorDetails(config.provider);
+  const probe = await (await ensureEmaServer()).controller.settings.probeLlmConfig(
+    config,
+  );
   return createActorLlmCheckResponse({
     actorId,
     startedAt,
-    ok,
-    errorCode: error?.code,
-    errorDetails: error?.details,
+    ok: probe.ok,
+    errorCode: probe.ok
+      ? undefined
+      : probe.unsupported
+        ? "UNSUPPORTED"
+        : classifyActorLlmProbeError(probe.message),
+    errorDetails: probe.ok
+      ? undefined
+      : {
+          provider: config.provider,
+          model: selected.model,
+          providerErrorType: probe.unsupported
+            ? "unsupported"
+            : "provider_probe_failed",
+          providerErrorMessage: probe.message,
+        },
+    retryable: !probe.unsupported,
     diagnostics: {
       provider: config.provider,
       model: selected.model,
-      endpoint: hostFromUrl(selected.baseUrl),
-      latencyMs: randomInt(180, 1500),
+      endpoint:
+        config.provider === "google" && config.google.useVertexAi
+          ? "vertex-ai"
+          : hostFromUrl(selected.baseUrl),
+      ...(probe.diagnostics ?? {}),
     },
   });
 }

@@ -41,6 +41,7 @@ import {
 
 import styles from "@/app/dashboard/page.module.css";
 import {
+  getActorSettings,
   runActorLlmCheck,
   saveActorLlmConfig,
   saveActorQqConfig,
@@ -62,6 +63,7 @@ import type {
   ActorQQConnectionSyncReason,
   ActorQQConversation,
   ActorRuntimeStatus,
+  ActorSettingsSnapshot,
   ActorSummary,
   ActorWebSearchConfig,
 } from "@/types/dashboard/v1beta1";
@@ -239,24 +241,6 @@ function qqDraftFromConfig(config?: ActorQQConfig): QqSettingsDraft {
     : DEFAULT_QQ_SETTINGS;
 }
 
-const GLOBAL_LLM_CONFIG = {
-  provider: "google" as LlmProvider,
-  openai: {
-    mode: "responses" as LlmOpenAiEndpointMode,
-    model: "gpt-5.4",
-    baseUrl: "https://api.openai.com/v1",
-    envKey: "OPENAI_API_KEY",
-  },
-  google: {
-    model: "gemini-3.1-pro-preview",
-    baseUrl: "https://generativelanguage.googleapis.com",
-    envKey: "GEMINI_API_KEY",
-    useVertexAi: false,
-    project: "",
-    location: "",
-    credentialsFile: "",
-  },
-};
 const activityStatusDescription: Record<ActorRuntimeStatus, string> = {
   offline: "角色未加载，不参与活动",
   sleeping: "角色已加载，当前处于睡眠",
@@ -334,28 +318,38 @@ function formatOpenAiEndpointMode(mode: LlmOpenAiEndpointMode) {
   return mode === "responses" ? "Responses API" : "Chat Completions";
 }
 
-function buildGlobalLlmSummaryRows() {
-  if (GLOBAL_LLM_CONFIG.provider === "openai") {
+function formatSecretStatus(value: string) {
+  return value.trim() ? "已配置" : "未配置";
+}
+
+function buildGlobalLlmSummaryRows(config?: ActorLlmConfig | null) {
+  if (!config) {
+    return [["状态", "正在读取"]] as const;
+  }
+
+  if (config.provider === "openai") {
     return [
       ["服务提供商", formatLlmProviderLabel("openai")],
-      ["接口协议", formatOpenAiEndpointMode(GLOBAL_LLM_CONFIG.openai.mode)],
-      ["模型", GLOBAL_LLM_CONFIG.openai.model],
-      ["接口地址", GLOBAL_LLM_CONFIG.openai.baseUrl],
-      ["ApiKey 来源", GLOBAL_LLM_CONFIG.openai.envKey],
+      ["接口协议", formatOpenAiEndpointMode(config.openai.mode)],
+      ["模型", config.openai.model],
+      ["接口地址", config.openai.baseUrl],
+      ["ApiKey", formatSecretStatus(config.openai.apiKey)],
     ] as const;
   }
 
   const rows: Array<readonly [string, string]> = [
     ["服务提供商", formatLlmProviderLabel("google")],
-    ["模型", GLOBAL_LLM_CONFIG.google.model],
-    ["接口地址", GLOBAL_LLM_CONFIG.google.baseUrl],
-    ["ApiKey 来源", GLOBAL_LLM_CONFIG.google.envKey],
-    ["Vertex AI", GLOBAL_LLM_CONFIG.google.useVertexAi ? "启用" : "未启用"],
+    ["模型", config.google.model],
+    ["Vertex AI", config.google.useVertexAi ? "启用" : "未启用"],
   ];
 
-  if (GLOBAL_LLM_CONFIG.google.useVertexAi) {
-    rows.push(["项目", GLOBAL_LLM_CONFIG.google.project || "未配置"]);
-    rows.push(["区域", GLOBAL_LLM_CONFIG.google.location || "未配置"]);
+  if (config.google.useVertexAi) {
+    rows.push(["项目", config.google.project || "未配置"]);
+    rows.push(["区域", config.google.location || "未配置"]);
+    rows.push(["凭证", formatSecretStatus(config.google.credentialsFile)]);
+  } else {
+    rows.push(["接口地址", config.google.baseUrl]);
+    rows.push(["ApiKey", formatSecretStatus(config.google.apiKey)]);
   }
 
   return rows;
@@ -401,7 +395,10 @@ function isHttpUrlValue(value: string) {
   }
 }
 
-function validateLlmDraftBeforeRequest(settings: LlmSettingsDraft) {
+function validateLlmDraftBeforeRequest(
+  settings: LlmSettingsDraft,
+  globalLlmConfig?: ActorLlmConfig | null,
+) {
   if (!isLlmDraftConfigurable(settings)) {
     return {
       summary: "当前模式暂不可用",
@@ -414,7 +411,13 @@ function validateLlmDraftBeforeRequest(settings: LlmSettingsDraft) {
   }
 
   if (settings.useGlobal) {
-    return null;
+    return globalLlmConfig
+      ? null
+      : {
+          summary: "全局配置未加载",
+          detail: "请等待当前全局配置读取完成后再试。",
+          fields: [] satisfies LlmSettingsFieldId[],
+        };
   }
 
   const missingFields = [
@@ -457,36 +460,29 @@ function validateLlmDraftBeforeRequest(settings: LlmSettingsDraft) {
   return null;
 }
 
-function buildGlobalActorLlmConfig(): ActorLlmConfig {
-  return {
-    provider: GLOBAL_LLM_CONFIG.provider === "openai" ? "openai" : "google",
-    openai: {
-      mode: GLOBAL_LLM_CONFIG.openai.mode,
-      model: GLOBAL_LLM_CONFIG.openai.model,
-      baseUrl: GLOBAL_LLM_CONFIG.openai.baseUrl,
-      /**
-       * 当前仍是 mock API，不读取真实密钥；这里用 envKey 作为“已解析凭据引用”，
-       * 避免使用全局配置时把空的角色草稿误判为配置不完整。
-       */
-      apiKey: GLOBAL_LLM_CONFIG.openai.envKey,
-    },
-    google: {
-      model: GLOBAL_LLM_CONFIG.google.model,
-      baseUrl: GLOBAL_LLM_CONFIG.google.baseUrl,
-      apiKey: GLOBAL_LLM_CONFIG.google.envKey,
-      useVertexAi: GLOBAL_LLM_CONFIG.google.useVertexAi,
-      project: GLOBAL_LLM_CONFIG.google.project,
-      location: GLOBAL_LLM_CONFIG.google.location,
-      credentialsFile: GLOBAL_LLM_CONFIG.google.credentialsFile,
-    },
-  };
-}
-
 function buildActorLlmConfigFromDraft(
   settings: LlmSettingsDraft,
+  globalLlmConfig?: ActorLlmConfig | null,
 ): ActorLlmConfig {
   if (settings.useGlobal) {
-    return buildGlobalActorLlmConfig();
+    return globalLlmConfig ?? {
+      provider: "google",
+      openai: {
+        mode: "responses",
+        model: "",
+        baseUrl: "",
+        apiKey: "",
+      },
+      google: {
+        model: "",
+        baseUrl: "",
+        apiKey: "",
+        useVertexAi: false,
+        project: "",
+        location: "",
+        credentialsFile: "",
+      },
+    };
   }
 
   const selectedProvider = settings.provider === "openai" ? "openai" : "google";
@@ -678,6 +674,23 @@ export function ActorSettingsPanel({
     useState(false);
   const [detailTitle, setDetailTitle] = useState<string | null>(null);
   const [detailClosing, setDetailClosing] = useState(false);
+  const [loadedSettings, setLoadedSettings] = useState<{
+    actorId: string;
+    settings: ActorSettingsSnapshot;
+  } | null>(() =>
+    actor.settings
+      ? {
+          actorId: actor.id,
+          settings: actor.settings,
+        }
+      : null,
+  );
+  const [globalLlmConfig, setGlobalLlmConfig] =
+    useState<ActorLlmConfig | null>(null);
+  const actorSettings =
+    loadedSettings?.actorId === actorId
+      ? loadedSettings.settings
+      : actor.settings;
   const [savedLlmSettings, setSavedLlmSettings] = useState<LlmSettingsDraft>(
     () => llmDraftFromConfig(actor.settings?.llm),
   );
@@ -847,11 +860,44 @@ export function ActorSettingsPanel({
   }, [actor.status, activitySwitching]);
 
   useEffect(() => {
-    const nextLlmSettings = llmDraftFromConfig(actor.settings?.llm);
-    const nextWebSearchSettings = webSearchDraftFromConfig(
-      actor.settings?.webSearch,
+    let cancelled = false;
+    setLoadedSettings(
+      actor.settings
+        ? {
+            actorId,
+            settings: actor.settings,
+          }
+        : null,
     );
-    const nextQqSettings = qqDraftFromConfig(actor.settings?.qq);
+
+    getActorSettings(actorId)
+      .then((response) => {
+        if (cancelled) {
+          return;
+        }
+        setLoadedSettings({
+          actorId: response.actorId,
+          settings: response.settings,
+        });
+        setGlobalLlmConfig(response.global.llm);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          showSettingsToast("设置加载失败", "error");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [actorId, actor.settings]);
+
+  useEffect(() => {
+    const nextLlmSettings = llmDraftFromConfig(actorSettings?.llm);
+    const nextWebSearchSettings = webSearchDraftFromConfig(
+      actorSettings?.webSearch,
+    );
+    const nextQqSettings = qqDraftFromConfig(actorSettings?.qq);
     setSavedLlmSettings(nextLlmSettings);
     setLlmDraft(nextLlmSettings);
     setSavedWebSearchSettings(nextWebSearchSettings);
@@ -862,7 +908,7 @@ export function ActorSettingsPanel({
     setLlmConnectionFeedback(null);
     setWebSearchValidationFeedback(null);
     setQqValidationFeedback(null);
-  }, [actor.id, actor.settings]);
+  }, [actor.id, actorSettings]);
 
   function showSettingsToast(
     message: string,
@@ -1033,7 +1079,10 @@ export function ActorSettingsPanel({
     const testDraft = llmDraft;
     const testSignature = buildLlmSettingsSignature(testDraft);
 
-    const validationFeedback = validateLlmDraftBeforeRequest(testDraft);
+    const validationFeedback = validateLlmDraftBeforeRequest(
+      testDraft,
+      globalLlmConfig,
+    );
     if (validationFeedback) {
       setLlmConnectionStatus("error");
       setLlmConnectionFeedback(
@@ -1052,7 +1101,7 @@ export function ActorSettingsPanel({
     try {
       const response = await runActorLlmCheck(
         actorId,
-        buildActorLlmConfigFromDraft(testDraft),
+        buildActorLlmConfigFromDraft(testDraft, globalLlmConfig),
         runId,
       );
       if (runId !== llmTestRunRef.current) {
@@ -1087,7 +1136,10 @@ export function ActorSettingsPanel({
       return;
     }
 
-    const validationFeedback = validateLlmDraftBeforeRequest(llmDraft);
+    const validationFeedback = validateLlmDraftBeforeRequest(
+      llmDraft,
+      globalLlmConfig,
+    );
     if (validationFeedback) {
       setLlmConnectionStatus("error");
       setLlmConnectionFeedback(
@@ -1118,7 +1170,7 @@ export function ActorSettingsPanel({
     try {
       const response = await saveActorLlmConfig(
         actorId,
-        buildActorLlmConfigFromDraft(saveDraft),
+        buildActorLlmConfigFromDraft(saveDraft, globalLlmConfig),
       );
       if (saveRunId !== llmSaveRunRef.current) {
         return;
@@ -1602,6 +1654,7 @@ export function ActorSettingsPanel({
               connectionStatus={llmConnectionStatus}
               connectionFeedback={llmConnectionFeedback}
               isSaving={llmIsSaving}
+              globalLlmConfig={globalLlmConfig}
               unsavedDialogVisible={llmUnsavedDialogVisible}
               onDraftChange={updateLlmDraft}
               onProviderChange={updateLlmProvider}
@@ -1754,6 +1807,7 @@ function ActorLlmSettingsDetail({
   connectionStatus,
   connectionFeedback,
   isSaving,
+  globalLlmConfig,
   unsavedDialogVisible,
   onDraftChange,
   onProviderChange,
@@ -1767,6 +1821,7 @@ function ActorLlmSettingsDetail({
   connectionStatus: LlmConnectionStatus;
   connectionFeedback: DashboardCheckFeedback | null;
   isSaving: boolean;
+  globalLlmConfig: ActorLlmConfig | null;
   unsavedDialogVisible: boolean;
   onDraftChange: (draft: LlmSettingsDraft) => void;
   onProviderChange: (provider: LlmProvider) => void;
@@ -1787,14 +1842,14 @@ function ActorLlmSettingsDetail({
     (connectionFeedback?.code === "CLIENT_VALIDATION" ||
       connectionFeedback?.code === "UNSUPPORTED");
   const preflightInvalidFields = isPreflightLlmError
-    ? (validateLlmDraftBeforeRequest(draft)?.fields ?? [])
+    ? (validateLlmDraftBeforeRequest(draft, globalLlmConfig)?.fields ?? [])
     : [];
   const shouldShowLlmErrorDetails =
     connectionStatus === "error" &&
     Boolean(connectionFeedback) &&
     connectionFeedback?.code !== "CLIENT_VALIDATION" &&
     connectionFeedback?.code !== "UNSUPPORTED";
-  const globalSummaryRows = buildGlobalLlmSummaryRows();
+  const globalSummaryRows = buildGlobalLlmSummaryRows(globalLlmConfig);
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const detailScrollRef = useRef<HTMLDivElement>(null);
   const detailScrollbarVisibleRef = useRef(false);

@@ -99,6 +99,10 @@ export interface ActorSettingsResponse {
   apiVersion: "v1beta1";
   actorId: string;
   settings: ActorSettingsSnapshot;
+  global: {
+    llm: ActorLlmConfig;
+    webSearch: ActorWebSearchConfig;
+  };
 }
 
 export interface CreateActorRequest {
