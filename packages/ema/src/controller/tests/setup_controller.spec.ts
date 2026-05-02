@@ -9,7 +9,7 @@ describe("SetupController", () => {
     vi.restoreAllMocks();
   });
 
-  test("commits the owner web identity binding", async () => {
+  test("commits owner identity bindings", async () => {
     const globalConfig = createTestGlobalConfigRecord();
     const owner = {
       id: 1,
@@ -39,15 +39,27 @@ describe("SetupController", () => {
     await new SetupController(server as never).commit({
       owner: { name: "Disviel" },
       globalConfig,
+      identityBindings: [{ channel: "qq", uid: "12345" }],
     });
 
     expect(
       server.dbService.externalIdentityBindingDB.upsertExternalIdentityBinding,
-    ).toHaveBeenCalledWith(
+    ).toHaveBeenNthCalledWith(
+      1,
       expect.objectContaining({
         userId: 1,
         channel: "web",
         uid: "1",
+      }),
+    );
+    expect(
+      server.dbService.externalIdentityBindingDB.upsertExternalIdentityBinding,
+    ).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        userId: 1,
+        channel: "qq",
+        uid: "12345",
       }),
     );
   });

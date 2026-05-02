@@ -13,9 +13,6 @@
 # testing
 /coverage
 
-# mock runtime data
-/.cache/
-
 # env files
 .env*
 
@@ -23,3 +20,4 @@
 .DS_Store
 *.pem
 *.tsbuildinfo
+next-env.d.ts

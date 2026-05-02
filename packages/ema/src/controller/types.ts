@@ -34,6 +34,10 @@ export interface SetupCommitInput {
       id?: number;
     };
   globalConfig: GlobalConfigRecord;
+  identityBindings?: Array<{
+    channel: string;
+    uid: string;
+  }>;
 }
 
 export interface SetupStatus {

@@ -52,7 +52,6 @@ function extractTransportError(payload: unknown): string | null {
 }
 
 const setupCheckEndpoints: Record<SetupCheckTarget, string> = {
-  mongo: "",
   llm: "/api/v1beta1/initialization/llm-probes",
   embedding: "/api/v1beta1/initialization/embedding-probes",
 };
@@ -64,9 +63,6 @@ export async function runSetupCheck(
   attempt = 0,
 ) {
   const endpoint = setupCheckEndpoints[target];
-  if (!endpoint) {
-    throw new Error("Mongo setup check is no longer supported.");
-  }
   return fetchJson<SetupServiceCheckResponse>(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

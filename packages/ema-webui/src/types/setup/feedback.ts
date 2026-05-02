@@ -21,8 +21,6 @@ export interface CheckFeedback {
 const errorSummaries: Record<SetupCheckErrorCode, string> = {
   INVALID_CONFIG: "配置项还不完整",
   UNSUPPORTED: "当前模式暂不可用",
-  MONGO_HANDSHAKE_FAILED: "MongoDB 无法建立连接",
-  MONGO_MEMORY_START_FAILED: "内存数据库启动异常",
   LLM_PROVIDER_ERROR: "LLM 供应商返回错误",
   LLM_NETWORK_ERROR: "LLM 服务请求超时",
   EMBEDDING_PROVIDER_ERROR: "Embedding 供应商返回错误",
@@ -31,8 +29,6 @@ const errorSummaries: Record<SetupCheckErrorCode, string> = {
 };
 
 export const fieldLabels: Record<string, string> = {
-  "mongo.uri": "MongoDB 连接地址",
-  "mongo.dbName": "MongoDB 数据库名",
   llm: "LLM 服务配置",
   "llm.provider": "LLM 供应商",
   "llm.model": "LLM 模型名称",

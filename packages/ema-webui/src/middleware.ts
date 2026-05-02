@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import type { SetupStatusResponse } from "@/types/setup/v1beta1";
 
 export const config = {
-  matcher: ["/((?!_next/|api/|mock/|.*\\..*).*)"],
+  matcher: ["/((?!_next/|api/|.*\\..*).*)"],
 };
 
 export async function middleware(request: NextRequest) {

@@ -42,6 +42,19 @@ export class SetupController {
       uid: String(ownerId),
       updatedAt: now,
     });
+    for (const binding of input.identityBindings ?? []) {
+      const channel = binding.channel.trim();
+      const uid = binding.uid.trim();
+      if (!channel || !uid || channel === "web") {
+        continue;
+      }
+      await this.server.dbService.externalIdentityBindingDB.upsertExternalIdentityBinding({
+        userId: ownerId,
+        channel,
+        uid,
+        updatedAt: now,
+      });
+    }
     const loaded = await this.server.reloadGlobalConfig();
     if (!loaded || !GlobalConfig.hasRuntimeConfig) {
       throw new Error("Global config was not available after setup commit.");

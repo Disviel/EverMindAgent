@@ -151,23 +151,6 @@ export async function runSetupServiceCheck(
   const startedAt = now();
   const phase = request.phase ?? "step";
 
-  if (target === "mongo") {
-    return createCheckResponse({
-      target,
-      phase,
-      startedAt,
-      ok: false,
-      errorCode: "UNSUPPORTED",
-      retryable: false,
-      errorDetails: {
-        reason: "setup_mongo_config_removed",
-      },
-      diagnostics: {
-        reason: "MongoDB is configured before WebUI starts.",
-      },
-    });
-  }
-
   if (target === "llm") {
     const config = request.config as SetupDraft["llm"] | undefined;
     if (!config || !isLLMConfigSupported(config)) {
@@ -444,6 +427,7 @@ export async function commitSetupDraft(
   }
 
   const server = await ensureEmaServer();
+  const qq = draft.owner.qq.trim();
   const status = await server.controller.setup.commit({
     owner: {
       id: 1,
@@ -452,6 +436,7 @@ export async function commitSetupDraft(
       avatar: "",
     },
     globalConfig: buildGlobalConfigRecord(draft),
+    identityBindings: qq ? [{ channel: "qq", uid: qq }] : [],
   });
   const user = status.owner;
   if (!status.complete || !user) {

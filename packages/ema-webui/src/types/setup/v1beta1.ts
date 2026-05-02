@@ -1,17 +1,14 @@
 export type SetupStepId = "llm" | "embedding" | "owner" | "review";
 
-export type MongoKind = "memory" | "remote";
 export type LLMProvider = "google" | "openai" | "anthropic";
 export type OpenAIMode = "responses" | "chat";
 export type EmbeddingProvider = "google" | "openai";
-export type SetupCheckTarget = "mongo" | "llm" | "embedding";
+export type SetupCheckTarget = "llm" | "embedding";
 export type SetupCheckPhase = "step" | "final";
 export type SetupCheckStatus = "passed" | "failed";
 export type SetupCheckErrorCode =
   | "INVALID_CONFIG"
   | "UNSUPPORTED"
-  | "MONGO_HANDSHAKE_FAILED"
-  | "MONGO_MEMORY_START_FAILED"
   | "LLM_PROVIDER_ERROR"
   | "LLM_NETWORK_ERROR"
   | "EMBEDDING_PROVIDER_ERROR"
@@ -28,11 +25,6 @@ export type SetupDiagnosticValue =
 export type SetupDiagnostics = Record<string, SetupDiagnosticValue>;
 
 export interface SetupDraft {
-  mongo: {
-    kind: MongoKind;
-    uri: string;
-    dbName: string;
-  };
   llm: {
     provider: LLMProvider;
     mode: OpenAIMode;
@@ -245,11 +237,6 @@ export const embeddingDefaults: Record<
 };
 
 export const initialDraft: SetupDraft = {
-  mongo: {
-    kind: "remote",
-    uri: "mongodb://localhost:27017",
-    dbName: "ema",
-  },
   llm: llmDefaults.google,
   embedding: embeddingDefaults.google,
   owner: {
@@ -272,25 +259,8 @@ function isHttpUrl(value: string) {
   }
 }
 
-function isMongoUri(value: string) {
-  return value.startsWith("mongodb://") || value.startsWith("mongodb+srv://");
-}
-
 function isEnvKey(value: string) {
   return envKeyPattern.test(value);
-}
-
-export function isMongoConfigComplete(mongo: SetupDraft["mongo"]) {
-  const dbName = mongo.dbName.trim();
-  return (
-    hasRequiredValue(dbName) &&
-    dbName.length <= 64 &&
-    !/[\\/"$ ]/.test(dbName) &&
-    (mongo.kind === "memory" ||
-      (hasRequiredValue(mongo.uri) &&
-        mongo.uri.trim().length <= 512 &&
-        isMongoUri(mongo.uri.trim())))
-  );
 }
 
 export function isLLMConfigSupported(llm: SetupDraft["llm"]) {
@@ -363,10 +333,6 @@ export function isEmbeddingConfigComplete(embedding: SetupDraft["embedding"]) {
     embedding.envKey.trim().length <= 128 &&
     isEnvKey(embedding.envKey.trim())
   );
-}
-
-export function isMongoComplete(draft: SetupDraft) {
-  return isMongoConfigComplete(draft.mongo);
 }
 
 export function isLLMComplete(draft: SetupDraft) {
