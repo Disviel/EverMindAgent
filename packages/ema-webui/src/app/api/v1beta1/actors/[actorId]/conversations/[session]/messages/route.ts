@@ -1,9 +1,8 @@
-import { ensureServerBooted } from "@/server";
 import {
   buildChatHistory,
+  getDefaultWebSession,
   sendConversationMessage,
 } from "@/server/services/chat";
-import { getOwnerUser } from "@/server/store/users";
 import type { SendMessageRequest } from "@/types/chat/v1beta1";
 
 export const runtime = "nodejs";
@@ -13,7 +12,6 @@ export async function GET(
   request: Request,
   context: { params: Promise<{ actorId: string; session: string }> },
 ) {
-  ensureServerBooted();
   const { actorId, session } = await context.params;
   const url = new URL(request.url);
   const limit = parseOptionalInteger(url.searchParams.get("limit"));
@@ -33,14 +31,16 @@ export async function POST(
   request: Request,
   context: { params: Promise<{ actorId: string; session: string }> },
 ) {
-  ensureServerBooted();
   const { actorId, session } = await context.params;
+  if (session !== getDefaultWebSession()) {
+    return Response.json(
+      { message: `Conversation ${session} not found.` },
+      { status: 404 },
+    );
+  }
   const body = (await request.json().catch(() => ({}))) as SendMessageRequest;
-  const owner = await getOwnerUser();
   const result = await sendConversationMessage({
     actorId,
-    session,
-    userName: owner?.name ?? "你",
     request: body,
   });
   return Response.json(result, { status: 200 });

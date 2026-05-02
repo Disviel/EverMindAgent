@@ -49,9 +49,7 @@ export function getChatHistory({
   limit,
   beforeMsgId,
 }: GetChatHistoryParams) {
-  const params = new URLSearchParams({
-    actorId: String(actorId),
-  });
+  const params = new URLSearchParams();
   if (typeof limit === "number") {
     params.set("limit", String(limit));
   }
@@ -59,11 +57,10 @@ export function getChatHistory({
     params.set("beforeMsgId", String(beforeMsgId));
   }
 
+  const query = params.toString();
   return fetchJson<ChatHistoryResponse>(
-    `/api/v1beta1/actors/${encodeURIComponent(actorId)}/conversations/${encodeURIComponent(session)}/messages?${params}`,
-    {
-      method: "GET",
-    },
+    `/api/v1beta1/actors/${encodeURIComponent(actorId)}/conversations/${encodeURIComponent(session)}/messages${query ? `?${query}` : ""}`,
+    { method: "GET" },
   );
 }
 

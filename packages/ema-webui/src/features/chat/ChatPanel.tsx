@@ -115,6 +115,7 @@ const HISTORY_TOP_PULL_SETTLE_DURATION = 360;
 const COMPOSER_MAX_IMAGE_COUNT = 3;
 const COMPOSER_MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 const COPY_TOAST_DURATION = 1400;
+const DEFAULT_WEB_CHAT_SESSION = "web-chat-1";
 const statusText: Record<ActorRuntimeStatus, string> = {
   sleeping: "睡眠",
   preparing: "准备中",
@@ -134,10 +135,6 @@ function actorAvatarText(name: string) {
   }
 
   return Array.from(name.trim()).slice(0, 2).join("").toUpperCase() || "A";
-}
-
-function buildWebChatSession(uid: string) {
-  return `web-chat-${uid}`;
 }
 
 function createCorrelationId() {
@@ -1169,7 +1166,7 @@ export function ChatPanel({
     try {
       const history = await getChatHistory({
         actorId: actor.id,
-        session: buildWebChatSession("current-user"),
+        session: DEFAULT_WEB_CHAT_SESSION,
         limit: HISTORY_PAGE_SIZE,
         beforeMsgId: nextBeforeMsgId,
       });
@@ -1530,7 +1527,7 @@ export function ChatPanel({
           try {
             const response = await sendChatMessage({
               actorId: actor.id,
-              session: buildWebChatSession("current-user"),
+              session: DEFAULT_WEB_CHAT_SESSION,
               request: {
                 correlationId,
                 contents: message.contents,
@@ -1657,7 +1654,7 @@ export function ChatPanel({
       try {
         const history = await getChatHistory({
           actorId: actor.id,
-          session: buildWebChatSession("current-user"),
+          session: DEFAULT_WEB_CHAT_SESSION,
           limit: HISTORY_PAGE_SIZE,
         });
         if (!cancelled) {
@@ -1822,7 +1819,7 @@ export function ChatPanel({
 
     const subscription = subscribeChatEvents({
       actorId: actor.id,
-      session: buildWebChatSession("current-user"),
+      session: DEFAULT_WEB_CHAT_SESSION,
       handler: (event) => {
         if (event.type !== "conversation.message.created") {
           return;
