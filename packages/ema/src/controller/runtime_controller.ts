@@ -1,5 +1,8 @@
 import type { Server } from "../server";
+import type { ActorEntity } from "../db";
 import type { ActorRuntimeSnapshot, ActorRuntimeStatus } from "./types";
+
+type PersistedActor = ActorEntity & { id: number };
 
 export class RuntimeController {
   private readonly runtimeOperations = new Map<
@@ -28,37 +31,63 @@ export class RuntimeController {
   async enable(actorId: number): Promise<ActorRuntimeSnapshot> {
     return await this.runLocked(actorId, async () => {
       const actor = await this.requireActor(actorId);
+      const current = await this.getSnapshot(actorId);
+      if (current.status !== "offline") {
+        throw new Error(
+          `Actor ${actorId} runtime cannot be enabled from ${current.status}.`,
+        );
+      }
+
       await this.server.dbService.actorDB.upsertActor({
         ...actor,
         enabled: true,
       });
       await this.publishStatus(actorId, "enable:start", "preparing");
-      const runtime = await this.server.actorRegistry.ensure(actorId);
-      await this.server.gateway.channelRegistry.ensureStarted(actorId);
-      await runtime.startBootInit();
-      const snapshot = await this.getSnapshot(actorId);
-      await this.publishStatus(actorId, "enable:accepted", snapshot.status);
-      return snapshot;
+
+      try {
+        const runtime = await this.server.actorRegistry.ensure(actorId);
+        await this.server.gateway.channelRegistry.ensureStarted(actorId);
+        await runtime.startBootInit();
+        const snapshot = await this.getSnapshot(actorId);
+        await this.publishStatus(actorId, "enable:accepted", snapshot.status);
+        return snapshot;
+      } catch (error) {
+        await this.rollbackEnable(actor);
+        throw error;
+      }
     });
   }
 
   async disable(actorId: number): Promise<ActorRuntimeSnapshot> {
     return await this.runLocked(actorId, async () => {
       const actor = await this.requireActor(actorId);
-      await this.publishStatus(actorId, "disable:start", "preparing");
+      const current = await this.getSnapshot(actorId);
+      if (current.status === "offline" || current.status === "preparing") {
+        throw new Error(
+          `Actor ${actorId} runtime cannot be disabled from ${current.status}.`,
+        );
+      }
+
       await this.server.dbService.actorDB.upsertActor({
         ...actor,
         enabled: false,
       });
-      await this.server.actorRegistry.unload(actorId);
-      await this.server.gateway.channelRegistry.stopActorChannels(actorId);
-      const snapshot = await this.getSnapshot(actorId);
-      await this.publishStatus(actorId, "disable:complete", "offline");
-      return {
-        ...snapshot,
-        enabled: false,
-        status: "offline",
-      };
+      await this.publishStatus(actorId, "disable:start", "preparing");
+
+      try {
+        await this.server.actorRegistry.unload(actorId);
+        await this.server.gateway.channelRegistry.stopActorChannels(actorId);
+        const snapshot = await this.getSnapshot(actorId);
+        await this.publishStatus(actorId, "disable:complete", "offline");
+        return {
+          ...snapshot,
+          enabled: false,
+          status: "offline",
+        };
+      } catch (error) {
+        await this.rollbackDisable(actor);
+        throw error;
+      }
     });
   }
 
@@ -90,7 +119,7 @@ export class RuntimeController {
     if (!actor || typeof actor.id !== "number") {
       throw new Error(`Actor ${actorId} not found.`);
     }
-    return actor as typeof actor & { id: number };
+    return actor as PersistedActor;
   }
 
   private async runLocked(
@@ -99,7 +128,7 @@ export class RuntimeController {
   ): Promise<ActorRuntimeSnapshot> {
     const current = this.runtimeOperations.get(actorId);
     if (current) {
-      return await current;
+      throw new Error(`Actor ${actorId} runtime operation is in progress.`);
     }
     const task = run().finally(() => {
       if (this.runtimeOperations.get(actorId) === task) {
@@ -108,6 +137,29 @@ export class RuntimeController {
     });
     this.runtimeOperations.set(actorId, task);
     return await task;
+  }
+
+  private async rollbackEnable(actor: PersistedActor): Promise<void> {
+    await this.server.dbService.actorDB.upsertActor({
+      ...actor,
+      enabled: false,
+    });
+    await this.server.actorRegistry.unload(actor.id);
+    await this.server.gateway.channelRegistry.stopActorChannels(actor.id);
+    await this.publishStatus(actor.id, "enable:rollback", "offline");
+  }
+
+  private async rollbackDisable(actor: PersistedActor): Promise<void> {
+    await this.server.dbService.actorDB.upsertActor({
+      ...actor,
+      enabled: true,
+    });
+    try {
+      await this.server.actorRegistry.ensure(actor.id);
+      await this.server.gateway.channelRegistry.ensureStarted(actor.id);
+    } finally {
+      await this.publishStatus(actor.id, "disable:rollback");
+    }
   }
 }
 

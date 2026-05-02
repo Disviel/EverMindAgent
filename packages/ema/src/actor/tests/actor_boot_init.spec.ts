@@ -1,4 +1,4 @@
-import { describe, expect, test, vi, beforeEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 const { runActorBackgroundJob } = vi.hoisted(() => ({
   runActorBackgroundJob: vi.fn(async () => {}),
@@ -29,8 +29,20 @@ function createActor(
     lastRunAt?: string | null;
     nextRunAt?: string | null;
   }>,
+  hasUnprocessedActivityBeforeDay:
+    | boolean
+    | ((dayDate: string) => boolean) = false,
 ) {
+  const hasUnprocessedActivityBeforeDayMock = vi.fn(
+    async (_actorId: number, dayDate: string) =>
+      typeof hasUnprocessedActivityBeforeDay === "function"
+        ? hasUnprocessedActivityBeforeDay(dayDate)
+        : hasUnprocessedActivityBeforeDay,
+  );
   const server = {
+    memoryManager: {
+      hasUnprocessedActivityBeforeDay: hasUnprocessedActivityBeforeDayMock,
+    },
     getActorScheduler: vi.fn().mockReturnValue({
       list: vi.fn().mockResolvedValue({
         overdue: [],
@@ -49,7 +61,10 @@ function createActor(
       }),
     }),
   };
-  return new (Actor as any)(1, server);
+  return {
+    actor: new (Actor as any)(1, server),
+    hasUnprocessedActivityBeforeDay: hasUnprocessedActivityBeforeDayMock,
+  };
 }
 
 describe("Actor boot init", () => {
@@ -57,21 +72,46 @@ describe("Actor boot init", () => {
     runActorBackgroundJob.mockClear();
   });
 
-  test("runs wake when routine schedules are missing", async () => {
-    const actor = createActor([]);
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test("runs wake without rollup when routine schedules are missing and no old activity exists", async () => {
+    const { actor } = createActor([]);
 
     await actor.runBootInit();
 
     const calls = runActorBackgroundJob.mock.calls as unknown as Array<
       [unknown, { task: string }]
     >;
+    expect(runActorBackgroundJob).toHaveBeenCalledTimes(1);
+    expect(calls[0]![1].task).toBe("wake");
+  });
+
+  test("runs rollup before wake when waking into a day with old unprocessed activity", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 3, 22, 10, 0, 0));
+    const { actor, hasUnprocessedActivityBeforeDay } = createActor([], true);
+
+    await actor.runBootInit();
+
+    const calls = runActorBackgroundJob.mock.calls as unknown as Array<
+      [unknown, { task: string; addition?: Record<string, unknown> }]
+    >;
+    expect(hasUnprocessedActivityBeforeDay).toHaveBeenCalledWith(
+      1,
+      "2026-04-22",
+    );
     expect(runActorBackgroundJob).toHaveBeenCalledTimes(2);
-    expect(calls[0]![1].task).toBe("memory_rollup");
+    expect(calls[0]![1]).toMatchObject({
+      task: "memory_rollup",
+      addition: { reason: "boot_init", targetDayDate: "2026-04-22" },
+    });
     expect(calls[1]![1].task).toBe("wake");
   });
 
-  test("skips wake when the latest routine boundary is sleep", async () => {
-    const actor = createActor([
+  test("skips wake and rollup when the latest routine boundary is sleep and no old activity exists", async () => {
+    const { actor } = createActor([
       {
         task: "wake",
         lastRunAt: "2026-04-21 08:00:00",
@@ -86,15 +126,44 @@ describe("Actor boot init", () => {
 
     await actor.runBootInit();
 
+    expect(runActorBackgroundJob).not.toHaveBeenCalled();
+  });
+
+  test("runs rollup while sleeping when old activity exists before the next wake day", async () => {
+    const { actor, hasUnprocessedActivityBeforeDay } = createActor(
+      [
+        {
+          task: "wake",
+          lastRunAt: "2026-04-21 08:00:00",
+          nextRunAt: "2026-04-22 08:00:00",
+        },
+        {
+          task: "sleep",
+          lastRunAt: "2026-04-21 23:00:00",
+          nextRunAt: "2026-04-22 23:00:00",
+        },
+      ],
+      true,
+    );
+
+    await actor.runBootInit();
+
     const calls = runActorBackgroundJob.mock.calls as unknown as Array<
-      [unknown, { task: string }]
+      [unknown, { task: string; addition?: Record<string, unknown> }]
     >;
+    expect(hasUnprocessedActivityBeforeDay).toHaveBeenCalledWith(
+      1,
+      "2026-04-22",
+    );
     expect(runActorBackgroundJob).toHaveBeenCalledTimes(1);
-    expect(calls[0]![1].task).toBe("memory_rollup");
+    expect(calls[0]![1]).toMatchObject({
+      task: "memory_rollup",
+      addition: { reason: "boot_init", targetDayDate: "2026-04-22" },
+    });
   });
 
   test("runs wake when only wake has lastRunAt", async () => {
-    const actor = createActor([
+    const { actor } = createActor([
       {
         task: "wake",
         lastRunAt: "2026-04-21 08:00:00",
@@ -111,8 +180,7 @@ describe("Actor boot init", () => {
     const calls = runActorBackgroundJob.mock.calls as unknown as Array<
       [unknown, { task: string }]
     >;
-    expect(runActorBackgroundJob).toHaveBeenCalledTimes(2);
-    expect(calls[0]![1].task).toBe("memory_rollup");
-    expect(calls[1]![1].task).toBe("wake");
+    expect(runActorBackgroundJob).toHaveBeenCalledTimes(1);
+    expect(calls[0]![1].task).toBe("wake");
   });
 });

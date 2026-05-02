@@ -1,11 +1,11 @@
 import "server-only";
 
 import { randomInt as cryptoRandomInt, randomUUID } from "node:crypto";
-import { switchActorEnabled } from "@/server/behaviors/actor-lifecycle";
 import {
   toActorSummary,
   toDashboardOverviewResponse,
   toDashboardUserProfile,
+  toWebRuntimeStatus,
 } from "@/server/ema-adapter/dashboard";
 import {
   DEFAULT_OWNER_USER_ID,
@@ -451,8 +451,24 @@ export async function updateActorActivityService(
   actorId: string,
   request: ActorActivityUpdateRequest,
 ): Promise<ActorActivityUpdateResponse> {
-  const existingActor = await getActorRecord(actorId);
-  if (!existingActor) {
+  try {
+    const server = await ensureEmaServer();
+    const coreActorId = toCoreActorId(actorId);
+    const snapshot = request.enabled
+      ? await server.controller.runtime.enable(coreActorId)
+      : await server.controller.runtime.disable(coreActorId);
+    return {
+      apiVersion: API_VERSION,
+      ok: true,
+      actorId,
+      activity: {
+        enabled: snapshot.enabled,
+        status: toWebRuntimeStatus(snapshot.status),
+        switching: false,
+        updatedAt: new Date(snapshot.updatedAt).toISOString(),
+      },
+    };
+  } catch (error) {
     return {
       apiVersion: API_VERSION,
       ok: false,
@@ -465,25 +481,11 @@ export async function updateActorActivityService(
       },
       error: {
         code: "ACTIVITY_SWITCH_FAILED",
-        retryable: false,
-        message: "actor not found",
+        retryable: true,
+        message: error instanceof Error ? error.message : "runtime switch failed",
       },
     };
   }
-
-  const summary = await switchActorEnabled(actorId, Boolean(request.enabled));
-  const status = summary?.status ?? existingActor.status;
-  return {
-    apiVersion: API_VERSION,
-    ok: Boolean(summary),
-    actorId,
-    activity: {
-      enabled: status !== "offline",
-      status,
-      switching: false,
-      updatedAt: now(),
-    },
-  };
 }
 
 function validateActorLlmConfig(config: ActorLlmConfig): {

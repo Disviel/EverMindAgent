@@ -55,11 +55,13 @@ interface DashboardLayoutState {
 const ACTOR_LATEST_PREVIEW_EXIT_DURATION = 260;
 const DASHBOARD_LAYOUT_STORAGE_KEY = "ema-webui-dashboard-layout-v3";
 const DASHBOARD_LAYOUT_RESET_KEY = "ema-webui-dashboard-layout-reset";
-const DASHBOARD_LAYOUT_RESET_TOKEN = "equal-side-layout-v1";
+const DASHBOARD_LAYOUT_RESET_TOKEN = "min-right-equal-side-layout-v2";
 const DASHBOARD_FIRST_LOGIN_STORAGE_KEY =
   "ema-webui-dashboard-first-login-v1";
 const CREATE_ACTOR_GUIDE_STORAGE_KEY =
   "ema-webui-create-actor-guide-dismissed-v1";
+const ACTOR_STARTUP_TIP_STORAGE_KEY =
+  "ema-webui-actor-startup-tip-pending-v1";
 const DASHBOARD_LAYOUT_STORAGE_KEYS = [
   "ema-webui-dashboard-layout",
   "ema-webui-dashboard-layout-v2",
@@ -121,16 +123,15 @@ function getDefaultDashboardLayout(): DashboardLayoutState {
       ? 1400
       : Math.max(960, window.innerWidth - 32);
   const availableWidth = contentWidth - LAYOUT_RESIZER_SIZE * 2;
-  const ratioUnit = Math.round(availableWidth / 5);
+  const actorInfoWidth = ACTOR_INFO_MIN_WIDTH;
   const sidebarWidth = clamp(
-    ratioUnit,
+    actorInfoWidth,
     SIDEBAR_EXPANDED_MIN_WIDTH,
     Math.max(
       SIDEBAR_EXPANDED_MIN_WIDTH,
-      availableWidth - CHAT_PANEL_MIN_WIDTH - ACTOR_INFO_MIN_WIDTH,
+      availableWidth - CHAT_PANEL_MIN_WIDTH - actorInfoWidth,
     ),
   );
-  const actorInfoWidth = Math.max(ACTOR_INFO_DEFAULT_WIDTH, ratioUnit * 2);
   const chatPanelWidth = Math.max(
     CHAT_PANEL_MIN_WIDTH,
     availableWidth - sidebarWidth - actorInfoWidth,
@@ -356,6 +357,16 @@ function DashboardContent() {
 
   const updateActorRuntimeStatus = useCallback(
     (actorId: string, status: ActorRuntimeStatus) => {
+      if (status !== "offline" && status !== "preparing") {
+        setStartupTipActorId((current) => {
+          if (current !== actorId) {
+            return current;
+          }
+          window.localStorage.removeItem(ACTOR_STARTUP_TIP_STORAGE_KEY);
+          return null;
+        });
+      }
+
       setOverview((current) => ({
         ...current,
         actors: current.actors.map((actor) =>
@@ -371,8 +382,11 @@ function DashboardContent() {
       window.sessionStorage.getItem(DASHBOARD_FIRST_LOGIN_STORAGE_KEY) === "1";
     if (isFirstDashboardEntry) {
       window.sessionStorage.removeItem(DASHBOARD_FIRST_LOGIN_STORAGE_KEY);
-      window.localStorage.removeItem(DASHBOARD_LAYOUT_STORAGE_KEY);
-      window.localStorage.removeItem(CREATE_ACTOR_GUIDE_STORAGE_KEY);
+      window.localStorage.clear();
+      window.localStorage.setItem(
+        DASHBOARD_LAYOUT_RESET_KEY,
+        DASHBOARD_LAYOUT_RESET_TOKEN,
+      );
     }
 
     const storedLayout = isFirstDashboardEntry
@@ -389,6 +403,11 @@ function DashboardContent() {
         : window.localStorage.getItem(CREATE_ACTOR_GUIDE_STORAGE_KEY) === "1",
     );
     setCreateActorGuideStorageReady(true);
+    setStartupTipActorId(
+      isFirstDashboardEntry
+        ? null
+        : window.localStorage.getItem(ACTOR_STARTUP_TIP_STORAGE_KEY),
+    );
     setLayoutStorageReady(true);
     // The initial client-only layout intentionally reads localStorage after
     // hydration so the server and first client render keep identical style
@@ -406,6 +425,28 @@ function DashboardContent() {
       JSON.stringify(layoutState),
     );
   }, [layoutState, layoutStorageReady]);
+
+  useEffect(() => {
+    if (
+      !activeActor ||
+      startupTipActorId !== activeActor.id ||
+      activeActor.status !== "offline"
+    ) {
+      return;
+    }
+
+    setActorInfoActiveTab("settings");
+    setLayoutState((current) =>
+      current.actorInfoVisible
+        ? current
+        : normalizeLayoutForViewport({
+            ...current,
+            actorInfoVisible: true,
+          }),
+    );
+    // normalizeLayoutForViewport intentionally reads the latest DOM width.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeActor?.id, activeActor?.status, startupTipActorId]);
 
   useEffect(() => {
     const normalizeLayout = () => {
@@ -958,7 +999,12 @@ function DashboardContent() {
                     startupTipActorId === activeActor.id &&
                     activeActor.status === "offline"
                   }
-                  onStartupTipDismiss={() => setStartupTipActorId(null)}
+                  onStartupTipDismiss={() => {
+                    window.localStorage.removeItem(
+                      ACTOR_STARTUP_TIP_STORAGE_KEY,
+                    );
+                    setStartupTipActorId(null);
+                  }}
                   onActorStatusChange={updateActorRuntimeStatus}
                 />
               )}
@@ -981,6 +1027,10 @@ function DashboardContent() {
             });
             setActorInfoActiveTab("settings");
             setStartupTipActorId(actor.id);
+            window.localStorage.setItem(
+              ACTOR_STARTUP_TIP_STORAGE_KEY,
+              actor.id,
+            );
             setLayoutState((current) => ({
               ...current,
               actorInfoVisible: true,

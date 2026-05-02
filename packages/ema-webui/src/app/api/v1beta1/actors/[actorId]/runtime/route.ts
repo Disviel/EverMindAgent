@@ -1,4 +1,3 @@
-import { ensureServerBooted } from "@/server";
 import { updateActorActivityService } from "@/server/services/dashboard";
 import type { ActorActivityUpdateRequest } from "@/types/dashboard/v1beta1";
 
@@ -9,7 +8,6 @@ export async function PATCH(
   request: Request,
   context: { params: Promise<{ actorId: string }> },
 ) {
-  ensureServerBooted();
   const { actorId } = await context.params;
   const body = (await request
     .json()

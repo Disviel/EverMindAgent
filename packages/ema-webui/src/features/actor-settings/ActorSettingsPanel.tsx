@@ -833,6 +833,7 @@ export function ActorSettingsPanel({
     qqDraft,
     savedQqSettings,
   );
+  const activityPreparing = activityStatus === "preparing";
   const activityEnabled = activityStatus !== "offline";
 
   useEffect(() => {
@@ -930,7 +931,7 @@ export function ActorSettingsPanel({
   }
 
   async function toggleActorActivity() {
-    if (activitySwitching) {
+    if (activitySwitching || activityPreparing) {
       return;
     }
 
@@ -1485,8 +1486,12 @@ export function ActorSettingsPanel({
               role="switch"
               aria-checked={activityEnabled}
               aria-label="启用角色"
-              disabled={activitySwitching}
+              disabled={activitySwitching || activityPreparing}
               onClick={() => {
+                if (activityPreparing) {
+                  return;
+                }
+
                 if (activityStatus !== "offline") {
                   setActivityDisableDialogVisible(true);
                   return;
@@ -1537,7 +1542,7 @@ export function ActorSettingsPanel({
                     <button
                       type="button"
                       className={styles.llmUnsavedDangerButton}
-                      disabled={activitySwitching}
+                      disabled={activitySwitching || activityPreparing}
                       onClick={() => {
                         void toggleActorActivity();
                       }}

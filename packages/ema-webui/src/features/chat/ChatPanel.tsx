@@ -280,7 +280,14 @@ export function ChatPanel({
     attachmentImages,
     inlineImagesById,
   );
+  const composerLocked =
+    actor.status === "offline" || actor.status === "preparing";
+  const composerLockedNotice =
+    actor.status === "preparing"
+      ? "角色状态变更中，稍后再发送"
+      : "请先在设置页启用角色";
   const canSendMessage =
+    !composerLocked &&
     !composerIsSending &&
     (attachmentImages.length > 0 ||
       isComposerSnapshotSendable(composerSnapshot));
@@ -1422,6 +1429,11 @@ export function ChatPanel({
   }
 
   async function sendComposerMessage() {
+    if (composerLocked) {
+      showComposerNotice(composerLockedNotice);
+      return;
+    }
+
     if (!canSendMessage || composerIsSending) {
       return;
     }
@@ -2372,6 +2384,7 @@ export function ChatPanel({
                   ? styles.composerFrameStacked
                   : ""
               }`}
+              data-locked={composerLocked ? "true" : undefined}
             >
               {composerReplyPreview
                 ? renderComposerReplyPreview(composerReplyPreview, () =>
@@ -2409,17 +2422,44 @@ export function ChatPanel({
                 className={styles.composerTextarea}
                 data-text-selectable="true"
                 data-empty={!isComposerSnapshotSendable(composerSnapshot)}
+                data-disabled={composerLocked ? "true" : undefined}
                 data-scrollable={composerEditorScrollable}
-                data-placeholder={`向 ${actor.name} 发送消息`}
-                contentEditable
+                data-placeholder={
+                  composerLocked
+                    ? composerLockedNotice
+                    : `向 ${actor.name} 发送消息`
+                }
+                contentEditable={!composerLocked}
                 suppressContentEditableWarning
                 role="textbox"
                 aria-label="消息内容"
+                aria-disabled={composerLocked}
                 aria-multiline="true"
-                onClick={handleComposerEditorClick}
+                onClick={(event) => {
+                  if (composerLocked) {
+                    event.preventDefault();
+                    showComposerNotice(composerLockedNotice);
+                    return;
+                  }
+                  handleComposerEditorClick(event);
+                }}
                 onInput={syncComposerEditorState}
-                onKeyDown={handleComposerKeyDown}
-                onPaste={handleComposerPaste}
+                onKeyDown={(event) => {
+                  if (composerLocked) {
+                    event.preventDefault();
+                    showComposerNotice(composerLockedNotice);
+                    return;
+                  }
+                  handleComposerKeyDown(event);
+                }}
+                onPaste={(event) => {
+                  if (composerLocked) {
+                    event.preventDefault();
+                    showComposerNotice(composerLockedNotice);
+                    return;
+                  }
+                  handleComposerPaste(event);
+                }}
               />
               <div className={styles.composerToolbar}>
                 <input
@@ -2429,12 +2469,14 @@ export function ChatPanel({
                   accept={SUPPORTED_COMPOSER_IMAGE_MIME_TYPES.join(",")}
                   multiple
                   tabIndex={-1}
+                  disabled={composerLocked}
                   onChange={handleAttachmentInputChange}
                 />
                 <button
                   type="button"
                   className={styles.composerIconButton}
                   aria-label="添加图片"
+                  disabled={composerLocked}
                   onClick={() => attachmentInputRef.current?.click()}
                 >
                   <ImagePlus aria-hidden="true" />

@@ -6,7 +6,8 @@ import {
 } from "../memory/prompts";
 import { runActorBackgroundJob } from "../scheduler/jobs/actor.job";
 import type { Server } from "../server";
-import { formatTimestamp } from "../shared/utils";
+import { formatTimestamp, parseTimestamp } from "../shared/utils";
+import type { ActorRecurringScheduleItem } from "../scheduler";
 import type { ChannelEvent } from "../channel";
 import type {
   ActorChatInput,
@@ -22,6 +23,7 @@ import {
 import { HeartbeatTimer } from "./timer";
 
 const DEFAULT_SLEEP_QUIET_PERIOD_MS = 5 * 60_000;
+const SCHEDULE_TIME_FORMAT = "YYYY-MM-DD HH:mm:ss";
 
 export class Actor {
   readonly sessionManager: SessionManager;
@@ -92,12 +94,28 @@ export class Actor {
       return this.bootInitPromise;
     }
     this.logger.info("Actor boot initialization started");
-    const task = this.runBootInit().finally(() => {
-      if (this.bootInitPromise === task) {
-        this.bootInitPromise = null;
-      }
-      this.publishRuntimeStatus("boot_init:complete");
-    });
+    const startedAt = performance.now();
+    const task = this.runBootInit()
+      .then(() => {
+        this.logger.info("Actor boot initialization completed", {
+          status: this.status,
+          durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
+        });
+      })
+      .catch((error) => {
+        this.logger.error("Actor boot initialization failed", {
+          status: this.status,
+          durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
+          error,
+        });
+        throw error;
+      })
+      .finally(() => {
+        if (this.bootInitPromise === task) {
+          this.bootInitPromise = null;
+        }
+        this.publishRuntimeStatus("boot_init:complete");
+      });
     this.bootInitPromise = task;
     this.runDetached(task, "run boot init");
     this.publishRuntimeStatus("boot_init:start");
@@ -231,40 +249,20 @@ export class Actor {
   }
 
   private async runBootInit(): Promise<void> {
-    try {
-      await runActorBackgroundJob(
-        this.server,
-        {
-          actorId: this.actorId,
-          task: "memory_rollup",
-          prompt: EMA_MEMORY_ROLLUP_PROMPT,
-          addition: { reason: "flush" },
-        },
-        Date.now(),
-      );
-    } catch (error) {
-      this.logger.error("Failed to run boot-init memory rollup:", error);
-    }
-
+    const triggeredAt = Date.now();
     const listed = await this.server.getActorScheduler(this.actorId).list();
     const wakeSchedule = listed.recurring.find((item) => item.task === "wake");
     const sleepSchedule = listed.recurring.find(
       (item) => item.task === "sleep",
     );
-    const shouldWake =
-      !wakeSchedule ||
-      !sleepSchedule ||
-      (typeof wakeSchedule.lastRunAt === "string" &&
-      typeof sleepSchedule.lastRunAt === "string"
-        ? wakeSchedule.lastRunAt > sleepSchedule.lastRunAt
-        : typeof wakeSchedule.lastRunAt === "string"
-          ? true
-          : typeof sleepSchedule.lastRunAt === "string"
-            ? false
-            : typeof wakeSchedule.nextRunAt === "string" &&
-                typeof sleepSchedule.nextRunAt === "string"
-              ? wakeSchedule.nextRunAt >= sleepSchedule.nextRunAt
-              : true);
+    const shouldWake = shouldBootInitWake(wakeSchedule, sleepSchedule);
+    const targetDayDate = resolveBootInitTargetDayDate({
+      shouldWake,
+      wakeSchedule,
+      triggeredAt,
+    });
+    await this.runBootMemoryRollupIfNeeded(triggeredAt, targetDayDate);
+
     if (!shouldWake) {
       return;
     }
@@ -281,6 +279,35 @@ export class Actor {
       );
     } catch (error) {
       this.logger.error("Failed to run boot-init wake task:", error);
+    }
+  }
+
+  private async runBootMemoryRollupIfNeeded(
+    triggeredAt: number,
+    targetDayDate: string,
+  ): Promise<void> {
+    const shouldRollup =
+      await this.server.memoryManager.hasUnprocessedActivityBeforeDay(
+        this.actorId,
+        targetDayDate,
+      );
+    if (!shouldRollup) {
+      return;
+    }
+
+    try {
+      await runActorBackgroundJob(
+        this.server,
+        {
+          actorId: this.actorId,
+          task: "memory_rollup",
+          prompt: EMA_MEMORY_ROLLUP_PROMPT,
+          addition: { reason: "boot_init", targetDayDate },
+        },
+        triggeredAt,
+      );
+    } catch (error) {
+      this.logger.error("Failed to run boot-init memory rollup:", error);
     }
   }
 
@@ -470,4 +497,43 @@ export class Actor {
       },
     );
   }
+}
+
+function shouldBootInitWake(
+  wakeSchedule: ActorRecurringScheduleItem | undefined,
+  sleepSchedule: ActorRecurringScheduleItem | undefined,
+): boolean {
+  return (
+    !wakeSchedule ||
+    !sleepSchedule ||
+    (typeof wakeSchedule.lastRunAt === "string" &&
+    typeof sleepSchedule.lastRunAt === "string"
+      ? wakeSchedule.lastRunAt > sleepSchedule.lastRunAt
+      : typeof wakeSchedule.lastRunAt === "string"
+        ? true
+        : typeof sleepSchedule.lastRunAt === "string"
+          ? false
+          : typeof wakeSchedule.nextRunAt === "string" &&
+              typeof sleepSchedule.nextRunAt === "string"
+            ? wakeSchedule.nextRunAt >= sleepSchedule.nextRunAt
+            : true)
+  );
+}
+
+function resolveBootInitTargetDayDate({
+  shouldWake,
+  wakeSchedule,
+  triggeredAt,
+}: {
+  shouldWake: boolean;
+  wakeSchedule: ActorRecurringScheduleItem | undefined;
+  triggeredAt: number;
+}): string {
+  if (shouldWake || typeof wakeSchedule?.nextRunAt !== "string") {
+    return formatTimestamp("YYYY-MM-DD", triggeredAt);
+  }
+  return formatTimestamp(
+    "YYYY-MM-DD",
+    parseTimestamp(SCHEDULE_TIME_FORMAT, wakeSchedule.nextRunAt),
+  );
 }

@@ -4338,6 +4338,12 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.045);
 }
 
+.composerFrame[data-locked="true"] {
+  border-color: color-mix(in srgb, var(--border) 76%, transparent);
+  background: color-mix(in srgb, var(--surface-raised) 82%, var(--surface-inset));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
 .composerReplyPreview {
   display: grid;
   min-width: 0;
@@ -4533,6 +4539,16 @@
   user-select: none;
 }
 
+.composerTextarea[data-disabled="true"] {
+  color: var(--text-subtle);
+  cursor: not-allowed;
+  user-select: none;
+}
+
+.composerTextarea[data-disabled="true"]::before {
+  color: color-mix(in srgb, var(--text-subtle) 92%, transparent);
+}
+
 .composerTextarea img {
   width: auto;
   max-width: min(280px, 100%);
@@ -4619,14 +4635,14 @@
     transform 150ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-.composerIconButton:hover,
+.composerIconButton:hover:not(:disabled),
 .sendButton:hover:not(:disabled) {
   background: var(--surface-hover);
   color: var(--text);
   transform: translateY(-1px);
 }
 
-.composerIconButton:active,
+.composerIconButton:active:not(:disabled),
 .sendButton:active:not(:disabled) {
   background: var(--surface-active);
   transform: translateY(0) scale(0.94);
@@ -4636,6 +4652,12 @@
 .sendButton:focus-visible {
   outline: 0;
   box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.composerIconButton:disabled {
+  color: color-mix(in srgb, var(--text-subtle) 48%, transparent);
+  cursor: not-allowed;
+  opacity: 1;
 }
 
 .composerSendCluster {

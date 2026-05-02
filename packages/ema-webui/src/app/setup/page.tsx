@@ -796,6 +796,7 @@ export default function SetupPage() {
           );
           return;
         }
+        window.localStorage.clear();
         window.sessionStorage.setItem(DASHBOARD_FIRST_LOGIN_STORAGE_KEY, "1");
         router.replace("/dashboard");
       } catch (error) {

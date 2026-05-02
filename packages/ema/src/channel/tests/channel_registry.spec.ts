@@ -59,4 +59,25 @@ describe("ChannelRegistry", () => {
     expect(client.start).toHaveBeenCalledTimes(1);
     expect(registry.getChannel(1, "qq")).toBe(client);
   });
+
+  test("stopActorChannels closes actor-scoped channels and keeps the shared web channel", async () => {
+    const client = await WebsocketChannelClient.create(
+      "qq",
+      1,
+      "ws://127.0.0.1:3001",
+      {} as never,
+      (call) => new NapCatQQAdapter(call),
+      null,
+    );
+    vi.spyOn(client, "close").mockResolvedValue();
+
+    const registry = new ChannelRegistry(createServer() as never);
+    registry.registerChannel(1, client);
+
+    await registry.stopActorChannels(1);
+
+    expect(client.close).toHaveBeenCalledTimes(1);
+    expect(registry.getChannel(1, "qq")).toBeNull();
+    expect(registry.getChannel(1, "web")).toBe(registry.webChannel);
+  });
 });

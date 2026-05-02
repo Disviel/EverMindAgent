@@ -964,6 +964,24 @@ export class MemoryManager implements BufferStorage, ActorMemory {
   }
 
   /**
+   * Returns whether any unprocessed activity belongs to a logical day before
+   * the target awake day.
+   * @param actorId - The actor identifier to read.
+   * @param dayDate - Target awake day in YYYY-MM-DD format.
+   */
+  async hasUnprocessedActivityBeforeDay(
+    actorId: number,
+    dayDate: string,
+  ): Promise<boolean> {
+    const records = await this.listShortTermMemories(actorId, {
+      kind: "activity",
+      processed: false,
+      sort: "desc",
+    });
+    return records.some((record) => (record.dayDate ?? record.date) < dayDate);
+  }
+
+  /**
    * Adds a long-term memory item to the actor.
    * @param actorId - The actor identifier to update.
    * @param item - The long-term memory item to add.
