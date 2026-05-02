@@ -1,4 +1,5 @@
 import * as lancedb from "@lancedb/lancedb";
+import * as nodeFs from "node:fs/promises";
 import * as path from "node:path";
 import { BSON } from "mongodb";
 
@@ -27,7 +28,8 @@ import type { Mongo } from "./mongo";
 import { createMongo } from "./mongo";
 import { utilCollections } from "./mongo/utils";
 import {
-  LanceMemoryVectorSearcher,
+  CompositeLongTermMemoryDB,
+  LanceMemoryVectorIndex,
   MongoActorDB,
   MongoConversationDB,
   MongoConversationMessageDB,
@@ -42,6 +44,27 @@ import {
 } from "./drivers";
 
 const DEFAULT_WEB_USER_ID = 1;
+
+export function getLanceDbDirectory(): string {
+  return path.join(
+    GlobalConfig.system.dataRoot,
+    "lancedb",
+    GlobalConfig.system.mode,
+  );
+}
+
+export async function prepareLanceDbDirectory(): Promise<{
+  directory: string;
+  reset: boolean;
+}> {
+  const directory = getLanceDbDirectory();
+  const reset = GlobalConfig.system.mode === "dev";
+  if (reset) {
+    await nodeFs.rm(directory, { recursive: true, force: true });
+  }
+  await nodeFs.mkdir(directory, { recursive: true });
+  return { directory, reset };
+}
 
 /**
  * Centralized database service aggregating all repositories and DB-related helpers.
@@ -88,7 +111,7 @@ export class DBService {
     collections: string[];
     createIndices(): Promise<void>;
   };
-  readonly longTermMemoryVectorSearcher: LanceMemoryVectorSearcher;
+  private readonly longTermMemoryVectorIndex: LanceMemoryVectorIndex;
 
   /**
    * Creates a DB service from config by connecting Mongo and LanceDB.
@@ -101,8 +124,8 @@ export class DBService {
     );
     await mongo.connect();
 
-    const databaseDir = path.join(GlobalConfig.system.dataRoot, "lancedb");
-    const lance = await lancedb.connect(databaseDir);
+    const { directory } = await prepareLanceDbDirectory();
+    const lance = await lancedb.connect(directory);
     return DBService.createSync(fs, mongo, lance);
   }
 
@@ -132,13 +155,11 @@ export class DBService {
     this.conversationDB = new MongoConversationDB(mongo);
     this.conversationMessageDB = new MongoConversationMessageDB(mongo);
     this.shortTermMemoryDB = new MongoShortTermMemoryDB(mongo);
-    this.longTermMemoryVectorSearcher = new LanceMemoryVectorSearcher(
-      mongo,
-      lancedb,
+    this.longTermMemoryVectorIndex = new LanceMemoryVectorIndex(mongo, lancedb);
+    this.longTermMemoryDB = new CompositeLongTermMemoryDB(
+      new MongoLongTermMemoryDB(mongo),
+      this.longTermMemoryVectorIndex,
     );
-    this.longTermMemoryDB = new MongoLongTermMemoryDB(mongo, [
-      this.longTermMemoryVectorSearcher,
-    ]);
   }
 
   /**
@@ -156,7 +177,6 @@ export class DBService {
       this.conversationMessageDB.createIndices(),
       this.shortTermMemoryDB.createIndices(),
       this.longTermMemoryDB.createIndices(),
-      this.longTermMemoryVectorSearcher.createIndices(),
     ]);
   }
 
@@ -181,7 +201,6 @@ export class DBService {
       ...this.conversationMessageDB.collections,
       ...this.shortTermMemoryDB.collections,
       ...this.longTermMemoryDB.collections,
-      ...this.longTermMemoryVectorSearcher.collections,
       ...extraCollections,
     ]);
     const snapshot = await this.mongo.snapshot(Array.from(collections));

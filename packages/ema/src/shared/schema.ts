@@ -169,7 +169,9 @@ export function collapseContentsToText(contents: InputContent[]): TextItem[] {
  * Expands multimodal contents for model messages by exposing media metadata as
  * text while preserving the original inline payload for multimodal providers.
  */
-export function expandContentsForModel(contents: InputContent[]): InputContent[] {
+export function expandContentsForModel(
+  contents: InputContent[],
+): InputContent[] {
   return contents.flatMap((content): InputContent[] => {
     if (content.type === "text") {
       return [content];

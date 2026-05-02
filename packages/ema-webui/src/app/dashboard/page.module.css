@@ -446,8 +446,16 @@
 }
 
 .createActorBubbleTip:focus-within {
-  --guide-tip-bg: color-mix(in srgb, var(--surface-raised) 94%, var(--accent-soft));
-  --guide-tip-border: color-mix(in srgb, var(--accent) 46%, var(--border-strong));
+  --guide-tip-bg: color-mix(
+    in srgb,
+    var(--surface-raised) 94%,
+    var(--accent-soft)
+  );
+  --guide-tip-border: color-mix(
+    in srgb,
+    var(--accent) 46%,
+    var(--border-strong)
+  );
   box-shadow:
     0 20px 48px rgba(0, 0, 0, 0.34),
     0 0 0 5px color-mix(in srgb, var(--accent) 11%, transparent),
@@ -771,49 +779,13 @@
   isolation: isolate;
 }
 
-.homePanel::before {
-  position: absolute;
-  width: min(58vw, 620px);
-  height: min(24vw, 220px);
-  border-radius: 999px;
-  background:
-    radial-gradient(
-      circle at 34% 45%,
-      color-mix(in srgb, var(--accent) 28%, transparent),
-      transparent 56%
-    ),
-    radial-gradient(
-      circle at 72% 52%,
-      color-mix(in srgb, white 10%, transparent),
-      transparent 58%
-    );
-  content: "";
-  filter: blur(22px);
-  opacity: 0.72;
-  pointer-events: none;
-  transform: translate3d(0, -10px, 0);
-}
-
-.homePanel::after {
-  position: absolute;
-  width: min(40vw, 420px);
-  height: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    color-mix(in srgb, var(--accent) 46%, transparent),
-    transparent
-  );
-  content: "";
-  opacity: 0.62;
-  transform: translate3d(0, 78px, 0);
-}
-
 .homeBrand {
   position: relative;
   z-index: 1;
-  display: flex;
+  display: grid;
   max-width: 100%;
+  justify-items: center;
+  gap: 18px;
   justify-content: center;
   animation: homeBrandEnter 420ms 80ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
@@ -821,50 +793,83 @@
 .homeTitleLockup {
   display: inline-flex;
   max-width: 100%;
-  align-items: flex-end;
+  align-items: center;
   justify-content: center;
-  gap: clamp(8px, 1.4vw, 14px);
 }
 
 .homeTitle {
   display: inline-block;
   margin: 0;
-  overflow: visible;
-  padding: 0.04em 0.18em 0.13em 0.02em;
-  background: linear-gradient(
-    135deg,
-    var(--text) 12%,
-    color-mix(in srgb, var(--accent) 44%, white) 58%,
-    color-mix(in srgb, var(--text-muted) 88%, white) 100%
-  );
-  background-clip: text;
-  color: transparent;
-  font-size: clamp(2.15rem, 5.1vw, 5rem);
-  font-weight: 850;
-  letter-spacing: -0.085em;
-  line-height: 1.04;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 3.2rem;
+  font-weight: 780;
+  letter-spacing: 0;
+  line-height: 1.12;
+  text-align: center;
+  white-space: normal;
 }
 
-.homeBetaBadge {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  margin-bottom: 0.28em;
-  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--border));
+.homeSettingsButton {
+  display: inline-grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
   border-radius: 999px;
-  padding: 5px 9px;
-  background: color-mix(in srgb, var(--accent-soft) 78%, var(--surface-raised));
+  padding: 0;
+  background: color-mix(
+    in srgb,
+    var(--surface-raised) 56%,
+    var(--accent-soft) 10%
+  );
+  color: color-mix(in srgb, var(--accent) 76%, var(--text-subtle));
+  outline: 0;
   box-shadow:
-    0 8px 24px color-mix(in srgb, var(--accent) 14%, transparent),
-    inset 0 1px 0 color-mix(in srgb, white 7%, transparent);
-  color: color-mix(in srgb, var(--accent) 34%, white);
-  font-family: var(--font-mono);
-  font-size: clamp(0.58rem, 1vw, 0.72rem);
-  font-weight: 760;
-  letter-spacing: -0.025em;
-  line-height: 1;
-  white-space: nowrap;
+    0 12px 30px rgba(0, 0, 0, 0.16),
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 8%, transparent);
+  transition:
+    border-color 170ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    background-color 170ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    color 170ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 170ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    transform 170ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.homeSettingsButton:hover {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border-strong));
+  background: color-mix(in srgb, var(--accent-soft) 52%, var(--surface-raised));
+  color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.homeSettingsButton:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.homeSettingsButton:focus-visible {
+  box-shadow:
+    0 0 0 4px var(--accent-soft),
+    0 12px 30px rgba(0, 0, 0, 0.16);
+}
+
+.homeSettingsButtonActive {
+  border-color: color-mix(in srgb, var(--accent) 54%, var(--border));
+  background: color-mix(in srgb, var(--accent) 22%, var(--surface-raised));
+  color: var(--text);
+  box-shadow:
+    0 12px 30px color-mix(in srgb, var(--accent) 16%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.homeSettingsButton svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
 }
 
 .homeVersion {
@@ -882,7 +887,6 @@
   transform: translate3d(-50%, 0, 0);
   white-space: nowrap;
 }
-
 
 .actorInfoPanel {
   display: flex;
@@ -1934,6 +1938,61 @@
   animation: llmSettingsSectionEnter 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
+.settingsInfoCard {
+  --settings-info-color: #5aa7ff;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  border: 1px solid
+    color-mix(in srgb, var(--settings-info-color) 34%, var(--border));
+  border-radius: 12px;
+  padding: 10px 11px;
+  background: color-mix(
+    in srgb,
+    var(--settings-info-color) 5%,
+    var(--surface-raised)
+  );
+  animation: llmSettingsSectionEnter 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.settingsInfoCardWarning {
+  --settings-info-color: var(--warning);
+}
+
+.settingsInfoCardError {
+  --settings-info-color: var(--danger);
+}
+
+.settingsInfoCard > svg {
+  width: 14px;
+  height: 14px;
+  margin-top: 1px;
+  color: color-mix(in srgb, var(--settings-info-color) 86%, var(--text-muted));
+  stroke-width: 2.2;
+}
+
+.settingsInfoCard > span {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.settingsInfoCard strong {
+  color: color-mix(in srgb, var(--settings-info-color) 74%, var(--text));
+  font-size: 0.78rem;
+  font-weight: 740;
+  letter-spacing: -0.014em;
+  line-height: 1.2;
+}
+
+.settingsInfoCard small {
+  color: color-mix(in srgb, var(--text-muted) 88%, transparent);
+  font-size: 0.73rem;
+  font-weight: 430;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+}
+
 .searchIntroIcon {
   display: flex;
   width: 15px;
@@ -2088,6 +2147,10 @@
 
 .llmProviderTabs {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.llmProviderTabsCompact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .llmEndpointTabs {
@@ -2251,6 +2314,15 @@
   color: color-mix(in srgb, var(--danger) 72%, var(--text-muted));
   font-size: 0.72rem;
   font-weight: 560;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+.settingsFieldHint {
+  margin: -2px 0 0;
+  color: color-mix(in srgb, var(--text-subtle) 88%, transparent);
+  font-size: 0.72rem;
+  font-weight: 520;
   letter-spacing: -0.01em;
   line-height: 1.25;
 }
@@ -4385,7 +4457,11 @@
 
 .composerFrame[data-locked="true"] {
   border-color: color-mix(in srgb, var(--border) 76%, transparent);
-  background: color-mix(in srgb, var(--surface-raised) 82%, var(--surface-inset));
+  background: color-mix(
+    in srgb,
+    var(--surface-raised) 82%,
+    var(--surface-inset)
+  );
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
 }
 
@@ -5164,7 +5240,6 @@
     transform: translateY(0) scale(1);
   }
 }
-
 
 @keyframes homeBrandEnter {
   from {

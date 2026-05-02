@@ -604,10 +604,11 @@ function CreateActorStepIdentity({
         aria-label="设置角色头像"
         onClick={onAvatarClick}
       >
-        <span className={styles.createActorIdentityAvatarText}>
-          {initial}
-        </span>
-        <span className={styles.createActorIdentityAvatarOverlay} aria-hidden="true">
+        <span className={styles.createActorIdentityAvatarText}>{initial}</span>
+        <span
+          className={styles.createActorIdentityAvatarOverlay}
+          aria-hidden="true"
+        >
           <Camera />
         </span>
       </button>

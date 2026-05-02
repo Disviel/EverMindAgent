@@ -13,6 +13,7 @@ import type {
   EffectiveActorSettings,
   EmbeddingProbeResult,
   LlmProbeResult,
+  SaveGlobalEmbeddingConfigResult,
 } from "./types";
 
 export class SettingsController {
@@ -153,12 +154,48 @@ export class SettingsController {
     return config;
   }
 
+  async saveGlobalLlmConfig(config: LLMConfig): Promise<LLMConfig> {
+    const invalidMessage = validateLlmSaveConfig(config);
+    if (invalidMessage) {
+      throw new Error(invalidMessage);
+    }
+    const record = await this.requireGlobalConfig();
+    await this.server.dbService.globalConfigDB.upsertGlobalConfig({
+      ...record,
+      defaultLlm: config,
+    });
+    GlobalConfig.updateDefaultLlm(config);
+    return config;
+  }
+
+  async saveGlobalEmbeddingConfig(
+    config: EmbeddingConfig,
+  ): Promise<SaveGlobalEmbeddingConfigResult> {
+    const invalidMessage = validateEmbeddingProbeConfig(config);
+    if (invalidMessage) {
+      throw new Error(invalidMessage);
+    }
+    const record = await this.requireGlobalConfig();
+    await this.server.dbService.globalConfigDB.upsertGlobalConfig({
+      ...record,
+      defaultEmbedding: config,
+    });
+    return {
+      config,
+      restartRequired: true,
+      vectorIndex:
+        this.server.dbService.longTermMemoryDB.getVectorIndexStatus(),
+    };
+  }
+
   getGlobalDefaults(): {
     llm: LLMConfig;
+    embedding: EmbeddingConfig;
     webSearch: WebSearchConfig;
   } {
     return {
       llm: GlobalConfig.defaultLlm,
+      embedding: GlobalConfig.defaultEmbedding,
       webSearch: GlobalConfig.defaultWebSearch,
     };
   }
@@ -169,6 +206,14 @@ export class SettingsController {
       throw new Error(`Actor ${actorId} not found.`);
     }
     return actor as typeof actor & { id: number };
+  }
+
+  private async requireGlobalConfig() {
+    const record = await this.server.dbService.globalConfigDB.getGlobalConfig();
+    if (!record) {
+      throw new Error("Global config not found.");
+    }
+    return record;
   }
 }
 
@@ -184,8 +229,7 @@ function validateLlmProbeConfig(config: LLMConfig): string | null {
     return "LLM config is incomplete.";
   }
   if (config.google.useVertexAi) {
-    return !config.google.project.trim() ||
-      !config.google.location.trim()
+    return !config.google.project.trim() || !config.google.location.trim()
       ? "Google Vertex AI project and location are required."
       : null;
   }
@@ -213,8 +257,7 @@ function validateEmbeddingProbeConfig(config: EmbeddingConfig): string | null {
     return "Embedding config is incomplete.";
   }
   if (config.google.useVertexAi) {
-    return !config.google.project.trim() ||
-      !config.google.location.trim()
+    return !config.google.project.trim() || !config.google.location.trim()
       ? "Google Vertex AI project and location are required."
       : null;
   }

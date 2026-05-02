@@ -70,7 +70,11 @@ describe("ActorRegistry", () => {
 
   test("restoreAll skips disabled actors and ensure rejects them", async () => {
     const fs = new MemFs();
-    const mongo = await createMongo("", "test_actor_registry_disabled", "memory");
+    const mongo = await createMongo(
+      "",
+      "test_actor_registry_disabled",
+      "memory",
+    );
     await mongo.connect();
     const lance = await lancedb.connect("memory://ema-actor-registry-disabled");
     const server = await createServerForTest(fs, mongo, lance);

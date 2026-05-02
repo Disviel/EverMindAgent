@@ -28,6 +28,9 @@ export async function DELETE(
   context: { params: Promise<{ actorId: string; conversationId: string }> },
 ) {
   const { actorId, conversationId } = await context.params;
-  const result = await deleteActorQqConversationService(actorId, conversationId);
+  const result = await deleteActorQqConversationService(
+    actorId,
+    conversationId,
+  );
   return Response.json(result, { status: result.ok ? 200 : 404 });
 }

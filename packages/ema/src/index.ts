@@ -8,6 +8,7 @@ export type {
   ConversationMessage,
   ConversationUserMessage,
   ConversationActorMessage,
+  VectorIndexStatus,
 } from "./db";
 export * from "./server";
 export * from "./shared/schema";

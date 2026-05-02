@@ -1,9 +1,6 @@
 import { buildSession } from "../channel";
 import type { Server } from "../server";
-import type {
-  ActorDetails,
-  CreateActorInput,
-} from "./types";
+import type { ActorDetails, CreateActorInput } from "./types";
 import { previewFromContents } from "./chat_controller";
 
 export class ActorController {

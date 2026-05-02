@@ -75,11 +75,14 @@ export async function runSetupCheck(
 }
 
 export async function runSetupDryRun(draft: SetupDraft) {
-  return fetchJson<SetupDryRunResponse>("/api/v1beta1/initialization/validations", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ draft }),
-  });
+  return fetchJson<SetupDryRunResponse>(
+    "/api/v1beta1/initialization/validations",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ draft }),
+    },
+  );
 }
 
 export async function commitSetup(draft: SetupDraft) {

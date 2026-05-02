@@ -291,7 +291,7 @@ export function ChatPanel({
       ? "角色正在启动，稍后再发送"
       : actor.transition === "shutting_down"
         ? "角色正在关闭，稍后再发送"
-      : "请先在设置页启用角色";
+        : "请先在设置页启用角色";
   const canSendMessage =
     !composerLocked &&
     !composerIsSending &&
@@ -1577,11 +1577,17 @@ export function ChatPanel({
 
   const appendStreamMessage = useCallback(
     (message: ConversationMessage, correlationId?: string) => {
-      if (correlationId && confirmedCorrelationIdsRef.current.has(correlationId)) {
+      if (
+        correlationId &&
+        confirmedCorrelationIdsRef.current.has(correlationId)
+      ) {
         return;
       }
 
-      if (correlationId && pendingCorrelationIdsRef.current.has(correlationId)) {
+      if (
+        correlationId &&
+        pendingCorrelationIdsRef.current.has(correlationId)
+      ) {
         confirmedCorrelationIdsRef.current.add(correlationId);
         pendingCorrelationIdsRef.current.delete(correlationId);
         setMessages((currentMessages) =>
@@ -1612,7 +1618,10 @@ export function ChatPanel({
         markLiveMessage(`${message.kind}-${message.msgId}`);
       }
 
-      if (message.kind === "actor" && latestScrollStateRef.current === "history") {
+      if (
+        message.kind === "actor" &&
+        latestScrollStateRef.current === "history"
+      ) {
         setUnreadMessageCount((current) => Math.min(999, current + 1));
       } else {
         isPinnedToLatestRef.current = true;
@@ -2071,7 +2080,9 @@ export function ChatPanel({
     userName,
   );
   const showConversationTyping =
-    conversationTyping && actor.status === "online" && actor.transition === null;
+    conversationTyping &&
+    actor.status === "online" &&
+    actor.transition === null;
   const runtimeStatusLabel = actor.transition
     ? transitionText[actor.transition]
     : statusText[actor.status];

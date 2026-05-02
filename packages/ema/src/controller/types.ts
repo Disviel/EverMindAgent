@@ -11,14 +11,11 @@ import type {
   LLMConfig,
   WebSearchConfig,
 } from "../config";
+import type { VectorIndexStatus } from "../db";
 import type { InputContent } from "../shared/schema";
 import type { MessageReplyRef } from "../channel";
 
-export type ActorRuntimeStatus =
-  | "offline"
-  | "sleep"
-  | "online"
-  | "busy";
+export type ActorRuntimeStatus = "offline" | "sleep" | "online" | "busy";
 export type ActorRuntimeTransition =
   | "booting"
   | "shutting_down"
@@ -93,6 +90,12 @@ export interface LlmProbeResult {
 }
 
 export interface EmbeddingProbeResult extends LlmProbeResult {}
+
+export interface SaveGlobalEmbeddingConfigResult {
+  config: EmbeddingConfig;
+  restartRequired: true;
+  vectorIndex: VectorIndexStatus;
+}
 
 export type QQConversationType = "chat" | "group";
 

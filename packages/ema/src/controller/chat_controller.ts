@@ -65,7 +65,9 @@ export class ChatController {
       return null;
     }
     const conversation =
-      await this.server.dbService.conversationDB.getConversation(conversationId);
+      await this.server.dbService.conversationDB.getConversation(
+        conversationId,
+      );
     if (!conversation || typeof conversation.id !== "number") {
       return null;
     }
@@ -89,7 +91,9 @@ export class ChatController {
     typing: boolean,
   ): Promise<ConversationTypingStreamEvent | null> {
     const conversation =
-      await this.server.dbService.conversationDB.getConversation(conversationId);
+      await this.server.dbService.conversationDB.getConversation(
+        conversationId,
+      );
     if (!conversation || typeof conversation.id !== "number") {
       return null;
     }
@@ -222,8 +226,10 @@ export class ChatController {
   }
 
   private async requireConversation(actorId: number, session: string) {
-    const conversation =
-      await this.server.dbService.getConversationBySession(actorId, session);
+    const conversation = await this.server.dbService.getConversationBySession(
+      actorId,
+      session,
+    );
     if (!conversation || typeof conversation.id !== "number") {
       throw new Error(`Conversation ${session} not found.`);
     }

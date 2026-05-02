@@ -38,25 +38,24 @@ function createFixture() {
       async (actorId: number, session: string) =>
         Array.from(conversations.values()).find(
           (conversation) =>
-            conversation.actorId === actorId && conversation.session === session,
+            conversation.actorId === actorId &&
+            conversation.session === session,
         ) ?? null,
     ),
     getConversation: vi.fn(
       async (conversationId: number) =>
         conversations.get(conversationId) ?? null,
     ),
-    upsertConversation: vi.fn(
-      async (conversation: ConversationEntity) => {
-        const id = conversation.id ?? nextConversationId++;
-        conversations.set(id, {
-          ...conversation,
-          id,
-          description: conversation.description ?? "",
-          allowProactive: conversation.allowProactive === true,
-        });
-        return id;
-      },
-    ),
+    upsertConversation: vi.fn(async (conversation: ConversationEntity) => {
+      const id = conversation.id ?? nextConversationId++;
+      conversations.set(id, {
+        ...conversation,
+        id,
+        description: conversation.description ?? "",
+        allowProactive: conversation.allowProactive === true,
+      });
+      return id;
+    }),
     deleteConversation: vi.fn(async (conversationId: number) =>
       conversations.delete(conversationId),
     ),
@@ -305,7 +304,9 @@ describe("ChannelController", () => {
       transportStatus: "disconnected",
       retryable: false,
     });
-    fixture.actorRegistry.get.mockReturnValueOnce(null).mockReturnValueOnce(null);
+    fixture.actorRegistry.get
+      .mockReturnValueOnce(null)
+      .mockReturnValueOnce(null);
     await expect(fixture.controller.restartQq(1)).resolves.toMatchObject({
       blockedBy: "actor_offline",
       transportStatus: "disconnected",

@@ -22,6 +22,8 @@ const actorSettingsErrorSummaries: Record<ActorSettingsCheckErrorCode, string> =
     UNSUPPORTED: "当前模式暂不可用",
     LLM_PROVIDER_ERROR: "LLM 供应商返回错误",
     LLM_NETWORK_ERROR: "LLM 服务请求超时",
+    EMBEDDING_PROVIDER_ERROR: "Embedding 供应商返回错误",
+    EMBEDDING_NETWORK_ERROR: "Embedding 服务请求超时",
     CHECK_FAILED: "检查未通过",
   };
 

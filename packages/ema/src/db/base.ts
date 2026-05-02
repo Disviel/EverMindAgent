@@ -2,6 +2,8 @@ import type { InputContent } from "../shared/schema";
 import type { MessageReplyRef } from "../channel";
 import type {
   ChannelConfig,
+  EmbeddingConfig,
+  EmbeddingProvider,
   GlobalConfigRecord,
   LLMConfig,
   WebSearchConfig,
@@ -851,9 +853,9 @@ export interface LongTermMemoryEntity extends Entity {
 }
 
 /**
- * Interface for long term memory database operations
+ * Interface for long term memory document storage operations.
  */
-export interface LongTermMemoryDB {
+export interface LongTermMemoryStore {
   /**
    * lists long term memories in the database
    * @returns Promise resolving to an array of long term memory data
@@ -873,6 +875,38 @@ export interface LongTermMemoryDB {
    * @returns Promise resolving to true if deleted, false if not found
    */
   deleteLongTermMemory(id: number): Promise<boolean>;
+}
+
+/**
+ * Long term memory vector index lifecycle state.
+ */
+export type VectorIndexState =
+  | "not_started"
+  | "indexing"
+  | "ready"
+  | "degraded"
+  | "failed";
+
+export interface VectorIndexStatus {
+  state: VectorIndexState;
+  activeFingerprint: string | null;
+  activeProvider: EmbeddingProvider | null;
+  activeModel: string | null;
+  dimensions?: number;
+  startedAt?: number;
+  finishedAt?: number;
+  totalMemories?: number;
+  indexedMemories?: number;
+  error?: string;
+}
+
+/**
+ * Full long term memory database operations, including vector search/indexing.
+ */
+export interface LongTermMemoryDB
+  extends LongTermMemoryStore, LongTermMemorySearcher {
+  ensureVectorIndex(config: EmbeddingConfig): Promise<VectorIndexStatus>;
+  getVectorIndexStatus(): VectorIndexStatus;
 }
 
 export interface ListLongTermMemoriesRequest {

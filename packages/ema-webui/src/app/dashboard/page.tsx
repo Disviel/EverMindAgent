@@ -19,11 +19,15 @@ import {
   ActorSidePanel,
   type ActorSideTabId,
 } from "@/features/actor-sidebar/ActorSidePanel";
-import { ActorItem, type ActorLatestPreviewState } from "@/features/actor-sidebar/ActorItem";
+import {
+  ActorItem,
+  type ActorLatestPreviewState,
+} from "@/features/actor-sidebar/ActorItem";
 import { ActorSettingsPanel } from "@/features/actor-settings/ActorSettingsPanel";
 import { CreateActorOverlay } from "@/features/create-actor/components/CreateActorOverlay";
 import { DashboardHomePanel } from "@/features/dashboard/DashboardHomePanel";
 import { DashboardSkeleton } from "@/features/dashboard/DashboardSkeleton";
+import { GlobalSettingsSidePanel } from "@/features/global-settings/GlobalSettingsSidePanel";
 import {
   ACTOR_INFO_DEFAULT_WIDTH,
   ACTOR_INFO_MIN_WIDTH,
@@ -51,18 +55,17 @@ interface DashboardLayoutState {
   chatPanelWidth: number;
   actorInfoWidth: number;
   actorInfoVisible: boolean;
+  homeSettingsVisible: boolean;
 }
 
 const ACTOR_LATEST_PREVIEW_EXIT_DURATION = 260;
 const DASHBOARD_LAYOUT_STORAGE_KEY = "ema-webui-dashboard-layout-v3";
 const DASHBOARD_LAYOUT_RESET_KEY = "ema-webui-dashboard-layout-reset";
 const DASHBOARD_LAYOUT_RESET_TOKEN = "min-right-equal-side-layout-v2";
-const DASHBOARD_FIRST_LOGIN_STORAGE_KEY =
-  "ema-webui-dashboard-first-login-v1";
+const DASHBOARD_FIRST_LOGIN_STORAGE_KEY = "ema-webui-dashboard-first-login-v1";
 const CREATE_ACTOR_GUIDE_STORAGE_KEY =
   "ema-webui-create-actor-guide-dismissed-v1";
-const ACTOR_STARTUP_TIP_STORAGE_KEY =
-  "ema-webui-actor-startup-tip-pending-v1";
+const ACTOR_STARTUP_TIP_STORAGE_KEY = "ema-webui-actor-startup-tip-pending-v1";
 const DASHBOARD_LAYOUT_STORAGE_KEYS = [
   "ema-webui-dashboard-layout",
   "ema-webui-dashboard-layout-v2",
@@ -144,6 +147,7 @@ function getDefaultDashboardLayout(): DashboardLayoutState {
     chatPanelWidth,
     actorInfoWidth,
     actorInfoVisible: true,
+    homeSettingsVisible: false,
   };
 }
 
@@ -154,6 +158,7 @@ function getInitialDashboardLayout(): DashboardLayoutState {
     chatPanelWidth: CHAT_PANEL_MIN_WIDTH,
     actorInfoWidth: ACTOR_INFO_DEFAULT_WIDTH,
     actorInfoVisible: true,
+    homeSettingsVisible: false,
   };
 }
 
@@ -190,6 +195,10 @@ function getStoredDashboardLayout(): DashboardLayoutState {
         typeof parsed.actorInfoVisible === "boolean"
           ? parsed.actorInfoVisible
           : fallbackLayout.actorInfoVisible,
+      homeSettingsVisible:
+        typeof parsed.homeSettingsVisible === "boolean"
+          ? parsed.homeSettingsVisible
+          : fallbackLayout.homeSettingsVisible,
     };
   } catch {
     return fallbackLayout;
@@ -242,6 +251,7 @@ function DashboardContent() {
     chatPanelWidth,
     actorInfoWidth,
     actorInfoVisible,
+    homeSettingsVisible,
   } = layoutState;
 
   const requestedActorId = searchParams.get("actorId");
@@ -255,6 +265,9 @@ function DashboardContent() {
   const isCreateActorRouteActive = searchParams.get("createActor") === "1";
   const isCreateActorActive = createActorVisible || isCreateActorRouteActive;
   const isHomeActive = !requestedActorId && !isCreateActorActive;
+  const rightPanelVisible = activeActor
+    ? actorInfoVisible
+    : homeSettingsVisible;
   const showCreateActorTip =
     createActorGuideStorageReady &&
     overviewLoaded &&
@@ -395,10 +408,13 @@ function DashboardContent() {
     }
 
     const storedLayout = isFirstDashboardEntry
-      ? getDefaultDashboardLayout()
+      ? {
+          ...getDefaultDashboardLayout(),
+          homeSettingsVisible: true,
+        }
       : getStoredDashboardLayout();
     setLayoutState(
-      storedLayout.actorInfoVisible
+      storedLayout.actorInfoVisible || storedLayout.homeSettingsVisible
         ? normalizeLayoutForViewport(storedLayout)
         : storedLayout,
     );
@@ -457,7 +473,7 @@ function DashboardContent() {
   useEffect(() => {
     const normalizeLayout = () => {
       setLayoutState((current) =>
-        current.actorInfoVisible
+        current.actorInfoVisible || current.homeSettingsVisible
           ? normalizeLayoutForViewport(current)
           : current,
       );
@@ -546,7 +562,9 @@ function DashboardContent() {
     const subscription = subscribeEmaEvents(null, (event: EmaKnownEvent) => {
       if (event.type === "actor.created") {
         setOverview((current) => {
-          if (current.actors.some((actor) => actor.id === event.data.actor.id)) {
+          if (
+            current.actors.some((actor) => actor.id === event.data.actor.id)
+          ) {
             return current;
           }
           return {
@@ -609,15 +627,17 @@ function DashboardContent() {
   }
 
   function normalizeLayoutForViewport(layout: DashboardLayoutState) {
-    const hasActorInfo = Boolean(activeActor && layout.actorInfoVisible);
+    const hasRightPanel = Boolean(
+      activeActor ? layout.actorInfoVisible : layout.homeSettingsVisible,
+    );
     const contentWidth = getDashboardContentWidth();
     const resizerWidth =
-      LAYOUT_RESIZER_SIZE + (hasActorInfo ? LAYOUT_RESIZER_SIZE : 0);
+      LAYOUT_RESIZER_SIZE + (hasRightPanel ? LAYOUT_RESIZER_SIZE : 0);
     const availablePanelWidth = Math.max(0, contentWidth - resizerWidth);
     const sidebarMinimum = layout.sidebarCollapsed
       ? SIDEBAR_COLLAPSED_WIDTH
       : SIDEBAR_EXPANDED_MIN_WIDTH;
-    const actorInfoMinimum = hasActorInfo ? ACTOR_INFO_MIN_WIDTH : 0;
+    const actorInfoMinimum = hasRightPanel ? ACTOR_INFO_MIN_WIDTH : 0;
     const sidebarUpperBound = Math.max(
       sidebarMinimum,
       availablePanelWidth - CHAT_PANEL_MIN_WIDTH - actorInfoMinimum,
@@ -629,7 +649,7 @@ function DashboardContent() {
           SIDEBAR_EXPANDED_MIN_WIDTH,
           sidebarUpperBound,
         );
-    const actorInfoPanelWidth = hasActorInfo
+    const actorInfoPanelWidth = hasRightPanel
       ? clamp(
           layout.actorInfoWidth,
           ACTOR_INFO_MIN_WIDTH,
@@ -643,7 +663,7 @@ function DashboardContent() {
       CHAT_PANEL_MIN_WIDTH,
       availablePanelWidth -
         sidebarPanelWidth -
-        (hasActorInfo ? actorInfoPanelWidth : 0),
+        (hasRightPanel ? actorInfoPanelWidth : 0),
     );
 
     return {
@@ -726,9 +746,7 @@ function DashboardContent() {
     const sidebarChatPairWidth =
       getDashboardContentWidth() -
       LAYOUT_RESIZER_SIZE -
-      (activeActor && actorInfoVisible
-        ? LAYOUT_RESIZER_SIZE + startActorInfoWidth
-        : 0);
+      (rightPanelVisible ? LAYOUT_RESIZER_SIZE + startActorInfoWidth : 0);
     const actorInfoChatPairWidth =
       getDashboardContentWidth() - startSidebarWidth - LAYOUT_RESIZER_SIZE * 2;
     const previousCursor = document.body.style.cursor;
@@ -782,9 +800,7 @@ function DashboardContent() {
       const pairWidth =
         getDashboardContentWidth() -
         LAYOUT_RESIZER_SIZE -
-        (activeActor && actorInfoVisible
-          ? LAYOUT_RESIZER_SIZE + actorInfoWidth
-          : 0);
+        (rightPanelVisible ? LAYOUT_RESIZER_SIZE + actorInfoWidth : 0);
       if (event.key === "ArrowLeft") {
         resizeSidebarAndChat(
           (sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : sidebarWidth) - step,
@@ -800,11 +816,13 @@ function DashboardContent() {
       return;
     }
 
-    if (!actorInfoVisible) {
+    if (!rightPanelVisible) {
       setLayoutState((current) =>
         normalizeLayoutForViewport({
           ...current,
-          actorInfoVisible: true,
+          ...(activeActor
+            ? { actorInfoVisible: true }
+            : { homeSettingsVisible: true }),
         }),
       );
       return;
@@ -823,13 +841,12 @@ function DashboardContent() {
       sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : sidebarWidth
     }px`,
   } as CSSProperties;
-  const actorInfoPaneVisible = Boolean(activeActor && actorInfoVisible);
   const actorWorkspaceWidth =
     chatPanelWidth +
-    (actorInfoPaneVisible ? LAYOUT_RESIZER_SIZE + actorInfoWidth : 0);
+    (rightPanelVisible ? LAYOUT_RESIZER_SIZE + actorInfoWidth : 0);
   const actorWorkspaceStyle = {
     "--chat-panel-width": `${chatPanelWidth}px`,
-    "--actor-info-width": `${activeActor ? actorInfoWidth : 0}px`,
+    "--actor-info-width": `${rightPanelVisible ? actorInfoWidth : 0}px`,
     "--actor-workspace-width": `${actorWorkspaceWidth}px`,
   } as CSSProperties;
 
@@ -950,6 +967,10 @@ function DashboardContent() {
           activeActor && !actorInfoVisible
             ? styles.actorWorkspaceSideHidden
             : ""
+        } ${
+          !activeActor && !homeSettingsVisible
+            ? styles.actorWorkspaceSideHidden
+            : ""
         }`}
         style={actorWorkspaceStyle}
       >
@@ -975,7 +996,21 @@ function DashboardContent() {
               }}
             />
           ) : (
-            <DashboardHomePanel />
+            <DashboardHomePanel
+              settingsOpen={homeSettingsVisible}
+              onToggleSettings={() => {
+                setLayoutState((current) => {
+                  const nextLayout = {
+                    ...current,
+                    homeSettingsVisible: !current.homeSettingsVisible,
+                  };
+
+                  return nextLayout.homeSettingsVisible
+                    ? normalizeLayoutForViewport(nextLayout)
+                    : nextLayout;
+                });
+              }}
+            />
           )}
         </section>
         {activeActor ? (
@@ -1021,7 +1056,28 @@ function DashboardContent() {
               )}
             />
           </>
-        ) : null}
+        ) : (
+          <>
+            <div
+              className={`${styles.layoutResizer} ${
+                resizingTarget === "actorInfo" ? styles.layoutResizerActive : ""
+              } ${!homeSettingsVisible ? styles.layoutResizerHidden : ""}`}
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="调整右侧设置宽度"
+              tabIndex={homeSettingsVisible ? 0 : -1}
+              onPointerDown={(event) => {
+                if (homeSettingsVisible) {
+                  startLayoutResize("actorInfo", event);
+                }
+              }}
+              onKeyDown={(event) =>
+                handleLayoutResizeKeyDown("actorInfo", event)
+              }
+            />
+            <GlobalSettingsSidePanel hidden={!homeSettingsVisible} />
+          </>
+        )}
       </div>
       {isCreateActorActive ? (
         <CreateActorOverlay

@@ -175,6 +175,22 @@ export class GlobalConfig {
     this.record = parseGlobalConfigRecord(record);
   }
 
+  static updateDefaultLlm(config: LLMConfig): void {
+    this.updateRecord({ defaultLlm: cloneConfig(config) });
+  }
+
+  static updateDefaultWebSearch(config: WebSearchConfig): void {
+    this.updateRecord({ defaultWebSearch: cloneConfig(config) });
+  }
+
+  static updateDefaultChannel(config: ChannelConfig): void {
+    this.updateRecord({ defaultChannel: cloneConfig(config) });
+  }
+
+  static updateSystemConfig(config: GlobalConfigRecord["system"]): void {
+    this.updateRecord({ system: cloneConfig(config) });
+  }
+
   static get hasRuntimeConfig(): boolean {
     return Boolean(this.record);
   }
@@ -189,7 +205,10 @@ export class GlobalConfig {
       mode: bootstrap.mode,
       dataRoot: bootstrap.paths.dataRoot,
       logsDir: bootstrap.paths.logsDir,
-      httpsProxy: resolveHttpsProxy(this.record?.system.httpsProxy ?? "", getProcessEnv),
+      httpsProxy: resolveHttpsProxy(
+        this.record?.system.httpsProxy ?? "",
+        getProcessEnv,
+      ),
     };
   }
 
@@ -207,8 +226,51 @@ export class GlobalConfig {
     return cloneConfig(this.loadedRecord.defaultLlm);
   }
 
+  static resolveRuntimeLlmConfig(config: LLMConfig): LLMConfig {
+    return {
+      provider: config.provider,
+      openai: {
+        mode: config.openai.mode,
+        model: config.openai.model.trim(),
+        baseUrl: config.openai.baseUrl.trim(),
+        apiKey: this.resolveEnvValue(config.openai.apiKey),
+      },
+      google: {
+        model: config.google.model.trim(),
+        baseUrl: config.google.baseUrl.trim(),
+        apiKey: this.resolveEnvValue(config.google.apiKey),
+        useVertexAi: config.google.useVertexAi,
+        project: this.resolveEnvValue(config.google.project),
+        location: this.resolveEnvValue(config.google.location),
+        credentialsFile: this.resolveEnvValue(config.google.credentialsFile),
+      },
+    };
+  }
+
   static get defaultEmbedding(): EmbeddingConfig {
     return cloneConfig(this.loadedRecord.defaultEmbedding);
+  }
+
+  static resolveRuntimeEmbeddingConfig(
+    config: EmbeddingConfig,
+  ): EmbeddingConfig {
+    return {
+      provider: config.provider,
+      openai: {
+        model: config.openai.model.trim(),
+        baseUrl: config.openai.baseUrl.trim(),
+        apiKey: this.resolveEnvValue(config.openai.apiKey),
+      },
+      google: {
+        model: config.google.model.trim(),
+        baseUrl: config.google.baseUrl.trim(),
+        apiKey: this.resolveEnvValue(config.google.apiKey),
+        useVertexAi: config.google.useVertexAi,
+        project: this.resolveEnvValue(config.google.project),
+        location: this.resolveEnvValue(config.google.location),
+        credentialsFile: this.resolveEnvValue(config.google.credentialsFile),
+      },
+    };
   }
 
   static get defaultWebSearch(): WebSearchConfig {
@@ -243,6 +305,20 @@ export class GlobalConfig {
       );
     }
     return this.record;
+  }
+
+  private static updateRecord(
+    patch: Partial<Omit<GlobalConfigRecord, "id" | "version">>,
+  ): void {
+    this.record = parseGlobalConfigRecord({
+      ...this.loadedRecord,
+      ...patch,
+    });
+  }
+
+  private static resolveEnvValue(name: string): string {
+    const key = name.trim();
+    return key ? (process.env[key]?.trim() ?? "") : "";
   }
 }
 
@@ -322,7 +398,8 @@ export function parseGlobalConfigRecord(
   const result = GlobalConfigRecordSchema.safeParse(record);
   if (!result.success) {
     const issues = result.error.issues.map(
-      (issue) => `  - ${issue.path.join(".") || "globalConfig"}: ${issue.message}`,
+      (issue) =>
+        `  - ${issue.path.join(".") || "globalConfig"}: ${issue.message}`,
     );
     throw new GlobalConfigError(
       "global_config_invalid",
@@ -339,9 +416,7 @@ function parseMode(value: string | undefined): "dev" | "prod" | null {
   return null;
 }
 
-function parseMongoKind(
-  value: string | undefined,
-): "memory" | "remote" | null {
+function parseMongoKind(value: string | undefined): "memory" | "remote" | null {
   if (value === "memory" || value === "remote") {
     return value;
   }

@@ -126,7 +126,10 @@ export class ChannelRegistry {
     return "disconnected";
   }
 
-  async restartActorChannel(actorId: number, channelName: string): Promise<void> {
+  async restartActorChannel(
+    actorId: number,
+    channelName: string,
+  ): Promise<void> {
     await this.removeActorChannel(actorId, channelName);
     if (!this.server.actorRegistry?.get(actorId)) {
       return;

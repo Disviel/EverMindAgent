@@ -116,14 +116,14 @@ export class RuntimeController {
   ): Promise<void> {
     const snapshot =
       explicitStatus !== undefined || explicitTransition !== undefined
-      ? {
-          ...(await this.getSnapshot(actorId)),
-          ...(explicitStatus !== undefined ? { status: explicitStatus } : {}),
-          ...(explicitTransition !== undefined
-            ? { transition: explicitTransition }
-            : {}),
-        }
-      : await this.getSnapshot(actorId);
+        ? {
+            ...(await this.getSnapshot(actorId)),
+            ...(explicitStatus !== undefined ? { status: explicitStatus } : {}),
+            ...(explicitTransition !== undefined
+              ? { transition: explicitTransition }
+              : {}),
+          }
+        : await this.getSnapshot(actorId);
     this.server.bus.publish(
       this.server.bus.createEvent({
         type: "actor.runtime.changed",

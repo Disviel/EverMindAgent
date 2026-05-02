@@ -26,4 +26,3 @@ export class EmaController {
     this.schedule = new ScheduleController(server);
   }
 }
-

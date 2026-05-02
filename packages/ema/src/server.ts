@@ -1,5 +1,5 @@
 import { GlobalConfig, type BootstrapConfig } from "./config/index";
-import { DBService } from "./db";
+import { DBService, getLanceDbDirectory } from "./db";
 import type { Fs } from "./shared/fs";
 import { RealFs } from "./shared/fs";
 import { ActorRegistry } from "./actor";
@@ -134,6 +134,11 @@ export class Server {
     this.logger.info("Database service initialized", {
       mongo: GlobalConfig.mongo,
       dataRoot: GlobalConfig.system.dataRoot,
+      lancedb: {
+        mode: GlobalConfig.system.mode,
+        path: getLanceDbDirectory(),
+        resetOnStart: GlobalConfig.system.mode === "dev",
+      },
     });
   }
 
@@ -191,6 +196,7 @@ export class Server {
       return;
     }
     await this.dbService.createIndices();
+    this.startLongTermMemoryVectorIndex();
     this.gateway = new Gateway(this);
     this.actorRegistry = new ActorRegistry(this);
     this.memoryManager = new MemoryManager(this);
@@ -205,6 +211,35 @@ export class Server {
     this.actorRegistry.startBootInitAll();
     this.runtimeStarted = true;
     this.logger.info("Server ready");
+  }
+
+  private startLongTermMemoryVectorIndex(): void {
+    const config = GlobalConfig.defaultEmbedding;
+    const selected =
+      config.provider === "openai" ? config.openai : config.google;
+    this.logger.info("Long term memory vector index started", {
+      provider: config.provider,
+      model: selected.model,
+    });
+    void this.dbService.longTermMemoryDB
+      .ensureVectorIndex(config)
+      .then((status) => {
+        if (status.state === "ready") {
+          this.logger.info("Long term memory vector index ready", status);
+          return;
+        }
+        if (status.state === "degraded") {
+          this.logger.warn("Long term memory vector index degraded", status);
+          return;
+        }
+        this.logger.warn("Long term memory vector index failed", status);
+      })
+      .catch((error) => {
+        this.logger.error(
+          "Failed to start long term memory vector index, continuing runtime",
+          error,
+        );
+      });
   }
 
   /** Stops runtime and database resources owned by this server. */

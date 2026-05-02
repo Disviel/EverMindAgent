@@ -64,7 +64,8 @@ export function validateSleepSchedule(schedule: SleepScheduleInput): void {
 }
 
 function toDailyCron(axisMinutes: number): string {
-  const clockMinutes = (axisMinutes + AXIS_TO_CLOCK_OFFSET_MINUTES) % DAY_MINUTES;
+  const clockMinutes =
+    (axisMinutes + AXIS_TO_CLOCK_OFFSET_MINUTES) % DAY_MINUTES;
   const minute = clockMinutes % 60;
   const hour = Math.floor(clockMinutes / 60);
   return `${minute} ${hour} * * *`;

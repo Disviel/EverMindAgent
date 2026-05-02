@@ -8,11 +8,10 @@ import {
   toWebRuntimeStatus,
   toWebRuntimeTransition,
 } from "@/server/ema-adapter/dashboard";
+import { DEFAULT_OWNER_USER_ID, toCoreActorId } from "@/server/ema-adapter/ids";
 import {
-  DEFAULT_OWNER_USER_ID,
-  toCoreActorId,
-} from "@/server/ema-adapter/ids";
-import {
+  toWebEmbeddingConfig,
+  toWebEmbeddingIndexStatus,
   toWebLlmConfig,
   toWebQqBlockedBy,
   toWebQqConversation,
@@ -54,6 +53,17 @@ import type {
   CreateActorRequest,
   CreateActorResponse,
   DashboardOverviewResponse,
+  GlobalEmbeddingCheckRequest,
+  GlobalEmbeddingCheckResponse,
+  GlobalEmbeddingSaveRequest,
+  GlobalEmbeddingSaveResponse,
+  GlobalLlmCheckRequest,
+  GlobalLlmCheckResponse,
+  GlobalLlmSaveRequest,
+  GlobalLlmSaveResponse,
+  GlobalSettingsResponse,
+  OwnerQqBindingSaveRequest,
+  OwnerQqBindingSaveResponse,
   OwnerResponse,
 } from "@/types/dashboard/v1beta1";
 
@@ -82,8 +92,58 @@ function hostFromUrl(value: string) {
   }
 }
 
+function credentialDiagnosticValue(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(trimmed) ? trimmed : "configured";
+}
+
+function isEnvKeyValue(value: string) {
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(value.trim());
+}
+
+function validateGlobalLlmEnvRefs(config: ActorLlmConfig): string | null {
+  if (config.provider === "openai") {
+    return isEnvKeyValue(config.openai.apiKey) ? null : "invalid api key env";
+  }
+  if (config.google.useVertexAi) {
+    return isEnvKeyValue(config.google.project) &&
+      isEnvKeyValue(config.google.location) &&
+      isEnvKeyValue(config.google.credentialsFile)
+      ? null
+      : "invalid vertex ai env";
+  }
+  return isEnvKeyValue(config.google.apiKey) ? null : "invalid api key env";
+}
+
+function validateGlobalEmbeddingEnvRefs(
+  config: GlobalEmbeddingSaveRequest["config"],
+): string | null {
+  if (config.provider === "openai") {
+    return isEnvKeyValue(config.openai.apiKey) ? null : "invalid api key env";
+  }
+  if (config.google.useVertexAi) {
+    return isEnvKeyValue(config.google.project) &&
+      isEnvKeyValue(config.google.location) &&
+      isEnvKeyValue(config.google.credentialsFile)
+      ? null
+      : "invalid vertex ai env";
+  }
+  return isEnvKeyValue(config.google.apiKey) ? null : "invalid api key env";
+}
+
 function selectedLlmConfig(config: ActorLlmConfig) {
   return config.provider === "openai" ? config.openai : config.google;
+}
+
+function selectedEmbeddingConfig(config: GlobalEmbeddingSaveRequest["config"]) {
+  return config.provider === "openai" ? config.openai : config.google;
+}
+
+function sameJsonValue(left: unknown, right: unknown) {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 export async function buildDashboardOverview(): Promise<DashboardOverviewResponse> {
@@ -117,6 +177,139 @@ export async function buildOwnerResponse(): Promise<OwnerResponse> {
   };
 }
 
+export async function buildGlobalSettingsResponse(): Promise<GlobalSettingsResponse> {
+  const server = await ensureEmaServer();
+  const setupStatus = await server.controller.setup.getStatus();
+  const record = await server.dbService.globalConfigDB.getGlobalConfig();
+  const runtimeDefaults = server.controller.settings.getGlobalDefaults();
+  const expectedEmbedding =
+    record?.defaultEmbedding ?? runtimeDefaults.embedding;
+  const qqBindings =
+    await server.dbService.externalIdentityBindingDB.listExternalIdentityBindings(
+      {
+        userId: setupStatus.owner?.id ?? DEFAULT_OWNER_USER_ID,
+        channel: "qq",
+      },
+    );
+  const qqUid = qqBindings[0]?.uid ?? "";
+
+  return {
+    apiVersion: API_VERSION,
+    user: toDashboardUserProfile(setupStatus.owner),
+    identityBindings: {
+      qq: {
+        uid: qqUid,
+        configured: Boolean(qqUid),
+      },
+    },
+    services: {
+      llm: toWebLlmConfig(record?.defaultLlm ?? runtimeDefaults.llm),
+      embedding: toWebEmbeddingConfig(expectedEmbedding),
+      embeddingRestartRequired: !sameJsonValue(
+        expectedEmbedding,
+        runtimeDefaults.embedding,
+      ),
+      embeddingIndex: toWebEmbeddingIndexStatus(
+        server.dbService.longTermMemoryDB.getVectorIndexStatus(),
+      ),
+    },
+  };
+}
+
+export async function saveOwnerQqBindingService(
+  request: OwnerQqBindingSaveRequest,
+): Promise<OwnerQqBindingSaveResponse> {
+  const uid = (request.uid ?? "").trim();
+  if (uid && !/^\d+$/.test(uid)) {
+    return {
+      apiVersion: API_VERSION,
+      ok: false,
+      binding: {
+        channel: "qq",
+        uid: "",
+        configured: false,
+        updatedAt: now(),
+      },
+      error: {
+        code: "INVALID_CONFIG",
+        retryable: false,
+        message: "QQ号只能包含数字。",
+      },
+    };
+  }
+
+  try {
+    const server = await ensureEmaServer();
+    const ownerId =
+      (await server.controller.setup.getStatus()).owner?.id ??
+      DEFAULT_OWNER_USER_ID;
+    if (!uid) {
+      const bindings =
+        await server.dbService.externalIdentityBindingDB.listExternalIdentityBindings(
+          {
+            userId: ownerId,
+            channel: "qq",
+          },
+        );
+      await Promise.all(
+        bindings
+          .map((binding) => binding.id)
+          .filter((id): id is number => typeof id === "number")
+          .map((id) =>
+            server.dbService.externalIdentityBindingDB.deleteExternalIdentityBinding(
+              id,
+            ),
+          ),
+      );
+      return {
+        apiVersion: API_VERSION,
+        ok: true,
+        binding: {
+          channel: "qq",
+          uid: "",
+          configured: false,
+          updatedAt: now(),
+        },
+      };
+    }
+
+    await server.dbService.externalIdentityBindingDB.upsertExternalIdentityBinding(
+      {
+        userId: ownerId,
+        channel: "qq",
+        uid,
+        updatedAt: Date.now(),
+      },
+    );
+    return {
+      apiVersion: API_VERSION,
+      ok: true,
+      binding: {
+        channel: "qq",
+        uid,
+        configured: true,
+        updatedAt: now(),
+      },
+    };
+  } catch (error) {
+    return {
+      apiVersion: API_VERSION,
+      ok: false,
+      binding: {
+        channel: "qq",
+        uid,
+        configured: Boolean(uid),
+        updatedAt: now(),
+      },
+      error: {
+        code: "DATABASE_WRITE_FAILED",
+        retryable: true,
+        message: messageFromError(error),
+      },
+    };
+  }
+}
+
 export async function buildActorListResponse(): Promise<ActorListResponse> {
   const server = await ensureEmaServer();
   const setupStatus = await server.controller.setup.getStatus();
@@ -137,6 +330,7 @@ export async function buildActorSettingsResponse(
   const globalDefaults = server.controller.settings.getGlobalDefaults();
   const global = {
     llm: toWebLlmConfig(globalDefaults.llm),
+    embedding: toWebEmbeddingConfig(globalDefaults.embedding),
     webSearch: toWebSearchConfig(globalDefaults.webSearch),
   };
   const actor = await server.dbService.actorDB.getActor(coreActorId);
@@ -214,7 +408,11 @@ export async function createActorQqConversationService(
 ): Promise<ActorQQConversationMutationResponse> {
   const conversation = request.conversation;
   if (!conversation) {
-    return qqConversationError(actorId, "INVALID_CONFIG", "invalid conversation");
+    return qqConversationError(
+      actorId,
+      "INVALID_CONFIG",
+      "invalid conversation",
+    );
   }
 
   try {
@@ -482,7 +680,8 @@ export async function updateActorActivityService(
       error: {
         code: "ACTIVITY_SWITCH_FAILED",
         retryable: true,
-        message: error instanceof Error ? error.message : "runtime switch failed",
+        message:
+          error instanceof Error ? error.message : "runtime switch failed",
       },
     };
   }
@@ -532,7 +731,51 @@ function createActorLlmCheckResponse({
   };
 }
 
-function createSaveResponse<TTarget extends "llm" | "webSearch" | "qq">({
+function createGlobalEmbeddingCheckResponse({
+  startedAt,
+  ok,
+  diagnostics,
+  errorCode,
+  errorDetails,
+  retryable = true,
+}: {
+  startedAt: string;
+  ok: boolean;
+  diagnostics: ActorSettingsDiagnostics;
+  errorCode?: ActorSettingsCheckErrorCode;
+  errorDetails?: ActorSettingsDiagnostics;
+  retryable?: boolean;
+}): GlobalEmbeddingCheckResponse {
+  const finishedAt = now();
+  return {
+    apiVersion: API_VERSION,
+    ok,
+    check: {
+      id: randomUUID(),
+      target: "embedding",
+      actorId: "global",
+      status: ok ? "passed" : "failed",
+      startedAt,
+      finishedAt,
+      durationMs: Math.max(
+        1,
+        new Date(finishedAt).getTime() - new Date(startedAt).getTime(),
+      ),
+      error: ok
+        ? undefined
+        : {
+            code: errorCode ?? "CHECK_FAILED",
+            retryable,
+            details: errorDetails ?? {},
+          },
+      diagnostics,
+    },
+  };
+}
+
+function createSaveResponse<
+  TTarget extends "llm" | "embedding" | "webSearch" | "qq",
+>({
   target,
   actorId,
   startedAt,
@@ -576,7 +819,9 @@ function createSaveResponse<TTarget extends "llm" | "webSearch" | "qq">({
   } as const;
 }
 
-function classifyActorLlmProbeError(message: string): ActorSettingsCheckErrorCode {
+function classifyActorLlmProbeError(
+  message: string,
+): ActorSettingsCheckErrorCode {
   const normalized = message.toLowerCase();
   const networkLike =
     normalized.includes("timeout") ||
@@ -589,6 +834,21 @@ function classifyActorLlmProbeError(message: string): ActorSettingsCheckErrorCod
   return networkLike ? "LLM_NETWORK_ERROR" : "LLM_PROVIDER_ERROR";
 }
 
+function classifyEmbeddingProbeError(
+  message: string,
+): ActorSettingsCheckErrorCode {
+  const normalized = message.toLowerCase();
+  const networkLike =
+    normalized.includes("timeout") ||
+    normalized.includes("network") ||
+    normalized.includes("fetch") ||
+    normalized.includes("econn") ||
+    normalized.includes("enotfound") ||
+    normalized.includes("etimedout") ||
+    normalized.includes("abort");
+  return networkLike ? "EMBEDDING_NETWORK_ERROR" : "EMBEDDING_PROVIDER_ERROR";
+}
+
 function llmSaveDiagnostics(config: ActorLlmConfig): ActorSettingsDiagnostics {
   const selected = selectedLlmConfig(config);
   return {
@@ -599,6 +859,25 @@ function llmSaveDiagnostics(config: ActorLlmConfig): ActorSettingsDiagnostics {
         ? "vertex-ai"
         : hostFromUrl(selected.baseUrl),
     storage: "ema-actor-config",
+  };
+}
+
+function embeddingSaveDiagnostics(
+  config: GlobalEmbeddingSaveRequest["config"],
+): ActorSettingsDiagnostics {
+  const selected = selectedEmbeddingConfig(config);
+  return {
+    provider: config.provider,
+    model: selected.model,
+    endpoint:
+      config.provider === "google" && config.google.useVertexAi
+        ? "vertex-ai"
+        : hostFromUrl(selected.baseUrl),
+    credentialRef:
+      config.provider === "google" && config.google.useVertexAi
+        ? credentialDiagnosticValue(config.google.credentialsFile)
+        : credentialDiagnosticValue(selected.apiKey),
+    storage: "ema-global-config",
   };
 }
 
@@ -624,9 +903,9 @@ export async function runActorLlmServiceCheck(
   const startedAt = now();
   const config = request.config;
   const selected = selectedLlmConfig(config);
-  const probe = await (await ensureEmaServer()).controller.settings.probeLlmConfig(
-    config,
-  );
+  const probe = await (
+    await ensureEmaServer()
+  ).controller.settings.probeLlmConfig(config);
   return createActorLlmCheckResponse({
     actorId,
     startedAt,
@@ -654,6 +933,125 @@ export async function runActorLlmServiceCheck(
         config.provider === "google" && config.google.useVertexAi
           ? "vertex-ai"
           : hostFromUrl(selected.baseUrl),
+      ...(probe.diagnostics ?? {}),
+    },
+  });
+}
+
+export async function runGlobalLlmServiceCheck(
+  request: GlobalLlmCheckRequest,
+): Promise<GlobalLlmCheckResponse> {
+  const startedAt = now();
+  const config = request.config;
+  const invalidEnvRefs = config ? validateGlobalLlmEnvRefs(config) : null;
+  if (!config || invalidEnvRefs) {
+    return createActorLlmCheckResponse({
+      actorId: "global",
+      startedAt,
+      ok: false,
+      errorCode: "INVALID_CONFIG",
+      errorDetails: {
+        issuePaths: ["llm"],
+        issueCodes: [invalidEnvRefs ? "invalid" : "required"],
+      },
+      retryable: true,
+      diagnostics: {},
+    }) as GlobalLlmCheckResponse;
+  }
+
+  const selected = selectedLlmConfig(config);
+  const probe = await (
+    await ensureEmaServer()
+  ).controller.settings.probeLlmConfig(config);
+  return createActorLlmCheckResponse({
+    actorId: "global",
+    startedAt,
+    ok: probe.ok,
+    errorCode: probe.ok
+      ? undefined
+      : probe.unsupported
+        ? "UNSUPPORTED"
+        : classifyActorLlmProbeError(probe.message),
+    errorDetails: probe.ok
+      ? undefined
+      : {
+          provider: config.provider,
+          model: selected.model,
+          providerErrorType: probe.unsupported
+            ? "unsupported"
+            : "provider_probe_failed",
+          providerErrorMessage: probe.message,
+        },
+    retryable: !probe.unsupported,
+    diagnostics: {
+      provider: config.provider,
+      model: selected.model,
+      endpoint:
+        config.provider === "google" && config.google.useVertexAi
+          ? "vertex-ai"
+          : hostFromUrl(selected.baseUrl),
+      credentialRef:
+        config.provider === "google" && config.google.useVertexAi
+          ? credentialDiagnosticValue(config.google.credentialsFile)
+          : credentialDiagnosticValue(selected.apiKey),
+      ...(probe.diagnostics ?? {}),
+    },
+  }) as GlobalLlmCheckResponse;
+}
+
+export async function runGlobalEmbeddingServiceCheck(
+  request: GlobalEmbeddingCheckRequest,
+): Promise<GlobalEmbeddingCheckResponse> {
+  const startedAt = now();
+  const config = request.config;
+  const invalidEnvRefs = config ? validateGlobalEmbeddingEnvRefs(config) : null;
+  if (!config || invalidEnvRefs) {
+    return createGlobalEmbeddingCheckResponse({
+      startedAt,
+      ok: false,
+      errorCode: "INVALID_CONFIG",
+      errorDetails: {
+        issuePaths: ["embedding"],
+        issueCodes: [invalidEnvRefs ? "invalid" : "required"],
+      },
+      diagnostics: {},
+    });
+  }
+
+  const selected = selectedEmbeddingConfig(config);
+  const probe = await (
+    await ensureEmaServer()
+  ).controller.settings.probeEmbeddingConfig(config);
+  return createGlobalEmbeddingCheckResponse({
+    startedAt,
+    ok: probe.ok,
+    errorCode: probe.ok
+      ? undefined
+      : probe.unsupported
+        ? "UNSUPPORTED"
+        : classifyEmbeddingProbeError(probe.message),
+    errorDetails: probe.ok
+      ? undefined
+      : {
+          provider: config.provider,
+          model: selected.model,
+          providerErrorType: probe.unsupported
+            ? "unsupported"
+            : "provider_probe_failed",
+          providerErrorMessage: probe.message,
+        },
+    retryable: !probe.unsupported,
+    diagnostics: {
+      provider: config.provider,
+      model: selected.model,
+      endpoint:
+        config.provider === "google" && config.google.useVertexAi
+          ? "vertex-ai"
+          : hostFromUrl(selected.baseUrl),
+      credentialRef:
+        config.provider === "google" && config.google.useVertexAi
+          ? credentialDiagnosticValue(config.google.credentialsFile)
+          : credentialDiagnosticValue(selected.apiKey),
       ...(probe.diagnostics ?? {}),
     },
   });
@@ -708,6 +1106,148 @@ export async function saveActorLlmServiceConfig(
       },
       diagnostics: llmSaveDiagnostics(config),
     }) as ActorLlmSaveResponse;
+  }
+}
+
+export async function saveGlobalLlmServiceConfig(
+  request: GlobalLlmSaveRequest,
+): Promise<GlobalLlmSaveResponse> {
+  const startedAt = now();
+  const config = request.config;
+  const invalidEnvRefs = config ? validateGlobalLlmEnvRefs(config) : null;
+  if (!config || invalidEnvRefs) {
+    return createSaveResponse({
+      target: "llm",
+      actorId: "global",
+      startedAt,
+      ok: false,
+      errorCode: "INVALID_CONFIG",
+      errorDetails: {
+        issuePaths: ["llm"],
+        issueCodes: [invalidEnvRefs ? "invalid" : "required"],
+      },
+      diagnostics: {},
+    }) as GlobalLlmSaveResponse;
+  }
+
+  try {
+    const server = await ensureEmaServer();
+    await server.controller.settings.saveGlobalLlmConfig(config);
+    return createSaveResponse({
+      target: "llm",
+      actorId: "global",
+      startedAt,
+      ok: true,
+      diagnostics: {
+        ...llmSaveDiagnostics(config),
+        credentialRef:
+          config.provider === "google" && config.google.useVertexAi
+            ? credentialDiagnosticValue(config.google.credentialsFile)
+            : credentialDiagnosticValue(selectedLlmConfig(config).apiKey),
+        storage: "ema-global-config",
+      },
+    }) as GlobalLlmSaveResponse;
+  } catch (error) {
+    const message = messageFromError(error);
+    return createSaveResponse({
+      target: "llm",
+      actorId: "global",
+      startedAt,
+      ok: false,
+      errorCode: isInvalidSettingsError(message)
+        ? "INVALID_CONFIG"
+        : "DATABASE_WRITE_FAILED",
+      errorDetails: {
+        message,
+      },
+      diagnostics: {
+        provider: config.provider,
+        model: selectedLlmConfig(config).model,
+        endpoint:
+          config.provider === "google" && config.google.useVertexAi
+            ? "vertex-ai"
+            : hostFromUrl(selectedLlmConfig(config).baseUrl),
+        credentialRef:
+          config.provider === "google" && config.google.useVertexAi
+            ? credentialDiagnosticValue(config.google.credentialsFile)
+            : credentialDiagnosticValue(selectedLlmConfig(config).apiKey),
+        storage: "ema-global-config",
+      },
+    }) as GlobalLlmSaveResponse;
+  }
+}
+
+export async function saveGlobalEmbeddingServiceConfig(
+  request: GlobalEmbeddingSaveRequest,
+): Promise<GlobalEmbeddingSaveResponse> {
+  const startedAt = now();
+  const config = request.config;
+  const fallbackIndex = (
+    await ensureEmaServer()
+  ).dbService.longTermMemoryDB.getVectorIndexStatus();
+  const invalidEnvRefs = config ? validateGlobalEmbeddingEnvRefs(config) : null;
+  if (!config || invalidEnvRefs) {
+    return {
+      ...(createSaveResponse({
+        target: "embedding",
+        actorId: "global",
+        startedAt,
+        ok: false,
+        errorCode: "INVALID_CONFIG",
+        errorDetails: {
+          issuePaths: ["embedding"],
+          issueCodes: [invalidEnvRefs ? "invalid" : "required"],
+        },
+        diagnostics: {},
+      }) as Omit<
+        GlobalEmbeddingSaveResponse,
+        "restartRequired" | "embeddingIndex"
+      >),
+      restartRequired: true,
+      embeddingIndex: toWebEmbeddingIndexStatus(fallbackIndex),
+    };
+  }
+
+  try {
+    const server = await ensureEmaServer();
+    const result =
+      await server.controller.settings.saveGlobalEmbeddingConfig(config);
+    return {
+      ...(createSaveResponse({
+        target: "embedding",
+        actorId: "global",
+        startedAt,
+        ok: true,
+        diagnostics: embeddingSaveDiagnostics(config),
+      }) as Omit<
+        GlobalEmbeddingSaveResponse,
+        "restartRequired" | "embeddingIndex"
+      >),
+      restartRequired: result.restartRequired,
+      embeddingIndex: toWebEmbeddingIndexStatus(result.vectorIndex),
+    };
+  } catch (error) {
+    const message = messageFromError(error);
+    return {
+      ...(createSaveResponse({
+        target: "embedding",
+        actorId: "global",
+        startedAt,
+        ok: false,
+        errorCode: isInvalidSettingsError(message)
+          ? "INVALID_CONFIG"
+          : "DATABASE_WRITE_FAILED",
+        errorDetails: {
+          message,
+        },
+        diagnostics: embeddingSaveDiagnostics(config),
+      }) as Omit<
+        GlobalEmbeddingSaveResponse,
+        "restartRequired" | "embeddingIndex"
+      >),
+      restartRequired: true,
+      embeddingIndex: toWebEmbeddingIndexStatus(fallbackIndex),
+    };
   }
 }
 

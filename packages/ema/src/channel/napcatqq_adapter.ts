@@ -431,7 +431,9 @@ export class NapCatQQAdapter implements ChannelAdapter<unknown, string> {
     rawElement?: NapCatQQRawElement,
   ): Promise<InputContent[]> {
     const marketFaceText = this.resolveMarketFaceText(data, rawElement);
-    const mediaText = marketFaceText ? `[QQ表情：${marketFaceText}]` : undefined;
+    const mediaText = marketFaceText
+      ? `[QQ表情：${marketFaceText}]`
+      : undefined;
     const mediaInputs = await this.resolveMediaInputs(
       payload,
       "image",

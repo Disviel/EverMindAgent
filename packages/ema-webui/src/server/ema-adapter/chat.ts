@@ -53,7 +53,10 @@ export function toWebConversationMessage(
 
 export function toConversationMessageCreatedEvent(
   event: ConversationMessageStreamEvent,
-): EmaEvent<"conversation.message.created", ConversationMessageCreatedEventData> {
+): EmaEvent<
+  "conversation.message.created",
+  ConversationMessageCreatedEventData
+> {
   return {
     type: "conversation.message.created",
     ts: Date.now(),

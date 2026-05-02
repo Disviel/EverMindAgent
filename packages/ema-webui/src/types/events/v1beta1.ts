@@ -73,6 +73,12 @@ export type EmaKnownEvent =
   | EmaEvent<"actor.runtime.changed", ActorRuntimeChangedEventData>
   | EmaEvent<"actor.latest_preview", ActorLatestPreviewEventData>
   | EmaEvent<"actor.unread.changed", ActorUnreadChangedEventData>
-  | EmaEvent<"conversation.message.created", ConversationMessageCreatedEventData>
+  | EmaEvent<
+      "conversation.message.created",
+      ConversationMessageCreatedEventData
+    >
   | EmaEvent<"conversation.typing.changed", ConversationTypingChangedEventData>
-  | EmaEvent<"channel.qq.connection.changed", ChannelQqConnectionChangedEventData>;
+  | EmaEvent<
+      "channel.qq.connection.changed",
+      ChannelQqConnectionChangedEventData
+    >;

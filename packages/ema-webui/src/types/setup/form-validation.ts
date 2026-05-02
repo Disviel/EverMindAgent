@@ -34,8 +34,8 @@ export const fieldLimits: Partial<Record<SetupFieldPath, number>> = {
   "owner.qq": 12,
 };
 
-const envKeyPattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const qqPattern = /^[1-9]\d{4,11}$/;
+const envKeyPattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 function isHttpUrl(value: string) {
   try {
@@ -62,16 +62,16 @@ function maxLength(value: string, path: SetupFieldPath) {
   return `${fieldName(path)}不能超过 ${limit} 个字符。`;
 }
 
-function validateEnvKey(value: string, path: SetupFieldPath) {
-  if (!envKeyPattern.test(value.trim())) {
-    return `${fieldName(path)}只能包含字母、数字、下划线，且不能以数字开头。`;
+function validateHttpUrl(value: string, path: SetupFieldPath) {
+  if (!isHttpUrl(value.trim())) {
+    return `${fieldName(path)}需要是 http 或 https 地址。`;
   }
   return null;
 }
 
-function validateHttpUrl(value: string, path: SetupFieldPath) {
-  if (!isHttpUrl(value.trim())) {
-    return `${fieldName(path)}需要是 http 或 https 地址。`;
+function validateEnvKey(value: string, path: SetupFieldPath) {
+  if (!envKeyPattern.test(value.trim())) {
+    return `${fieldName(path)}只能包含字母、数字、下划线，且不能以数字开头。`;
   }
   return null;
 }

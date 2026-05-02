@@ -510,14 +510,14 @@ export class Actor {
   }
 
   private publishRuntimeStatus(reason: string): void {
-    this.server.controller.runtime.publishStatus(this.actorId, reason).catch(
-      (error) => {
+    this.server.controller.runtime
+      .publishStatus(this.actorId, reason)
+      .catch((error) => {
         this.logger.warn("Failed to publish runtime status", {
           reason,
           error: error instanceof Error ? error.message : String(error),
         });
-      },
-    );
+      });
   }
 
   private publishConversationTyping(

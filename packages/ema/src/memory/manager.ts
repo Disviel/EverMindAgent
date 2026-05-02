@@ -714,15 +714,13 @@ export class MemoryManager implements BufferStorage, ActorMemory {
     index1?: string,
   ): Promise<LongTermMemoryRecord[]> {
     const items =
-      await this.server.dbService.longTermMemoryVectorSearcher.searchLongTermMemories(
-        {
-          actorId,
-          memory,
-          limit,
-          index0,
-          index1,
-        },
-      );
+      await this.server.dbService.longTermMemoryDB.searchLongTermMemories({
+        actorId,
+        memory,
+        limit,
+        index0,
+        index1,
+      });
     return items.map((item) => {
       if (typeof item.id !== "number") {
         throw new Error("LongTermMemory record is missing id");

@@ -1,7 +1,10 @@
 "use client";
 
 import styles from "@/app/dashboard/page.module.css";
-import type { ActorRuntimeStatus, ActorSummary } from "@/types/dashboard/v1beta1";
+import type {
+  ActorRuntimeStatus,
+  ActorSummary,
+} from "@/types/dashboard/v1beta1";
 
 export interface ActorLatestPreview {
   text: string;

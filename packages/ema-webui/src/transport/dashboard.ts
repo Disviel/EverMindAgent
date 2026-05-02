@@ -18,6 +18,14 @@ import type {
   ActorWebSearchConfig,
   ActorWebSearchSaveResponse,
   DashboardOverviewResponse,
+  GlobalEmbeddingCheckResponse,
+  GlobalEmbeddingServiceConfig,
+  GlobalLlmConfig,
+  GlobalEmbeddingSaveResponse,
+  GlobalLlmCheckResponse,
+  GlobalLlmSaveResponse,
+  GlobalSettingsResponse,
+  OwnerQqBindingSaveResponse,
   OwnerResponse,
 } from "@/types/dashboard/v1beta1";
 
@@ -93,6 +101,12 @@ export function getActorSettings(actorId: string) {
   );
 }
 
+export function getGlobalSettings() {
+  return fetchJson<GlobalSettingsResponse>("/api/v1beta1/settings/global", {
+    method: "GET",
+  });
+}
+
 export function updateActorActivity(actorId: string, enabled: boolean) {
   return fetchJson<ActorActivityUpdateResponse>(
     `/api/v1beta1/actors/${encodeURIComponent(actorId)}/runtime`,
@@ -129,6 +143,69 @@ export function saveActorLlmConfig(actorId: string, config: ActorLlmConfig) {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ config }),
+    },
+  );
+}
+
+export function runGlobalLlmCheck(config: GlobalLlmConfig, attempt = 0) {
+  return fetchJson<GlobalLlmCheckResponse>(
+    "/api/v1beta1/settings/global/llm/probes",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        attempt,
+        config,
+      }),
+    },
+  );
+}
+
+export function saveGlobalLlmConfig(config: GlobalLlmConfig) {
+  return fetchJson<GlobalLlmSaveResponse>("/api/v1beta1/settings/global/llm", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ config }),
+  });
+}
+
+export function runGlobalEmbeddingCheck(
+  config: GlobalEmbeddingServiceConfig,
+  attempt = 0,
+) {
+  return fetchJson<GlobalEmbeddingCheckResponse>(
+    "/api/v1beta1/settings/global/embedding/probes",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        attempt,
+        config,
+      }),
+    },
+  );
+}
+
+export function saveGlobalEmbeddingConfig(
+  config: GlobalEmbeddingServiceConfig,
+) {
+  return fetchJson<GlobalEmbeddingSaveResponse>(
+    "/api/v1beta1/settings/global/embedding",
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ config }),
+    },
+  );
+}
+
+export function saveOwnerQqBinding(uid: string) {
+  return fetchJson<OwnerQqBindingSaveResponse>(
+    "/api/v1beta1/owner/identity-bindings/qq",
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ uid }),
     },
   );
 }

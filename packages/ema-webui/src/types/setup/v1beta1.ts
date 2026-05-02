@@ -247,8 +247,8 @@ export const initialDraft: SetupDraft = {
 
 export const hasRequiredValue = (value: string) => value.trim().length > 0;
 
-const envKeyPattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const qqPattern = /^[1-9]\d{4,11}$/;
+const envKeyPattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 function isHttpUrl(value: string) {
   try {

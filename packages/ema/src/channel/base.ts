@@ -96,10 +96,7 @@ export interface Channel {
   ): Promise<ChannelResponse | null>;
 }
 
-export type ChannelClientStatus =
-  | "connecting"
-  | "connected"
-  | "disconnected";
+export type ChannelClientStatus = "connecting" | "connected" | "disconnected";
 
 export interface ChannelStartOptions {
   maxAttempts?: number;

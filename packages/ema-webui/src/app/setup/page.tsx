@@ -89,8 +89,7 @@ const finalStepOrder: Record<FinalReviewStepId, number> = {
 };
 
 const APP_VERSION_BADGE = "v0.1.0 Beta";
-const DASHBOARD_FIRST_LOGIN_STORAGE_KEY =
-  "ema-webui-dashboard-first-login-v1";
+const DASHBOARD_FIRST_LOGIN_STORAGE_KEY = "ema-webui-dashboard-first-login-v1";
 const CHECK_SUCCESS_HOLD_MS = 560;
 const CHECK_FAILED_HOLD_MS = 820;
 
@@ -299,8 +298,7 @@ export default function SetupPage() {
   );
   const [finalAttempt, setFinalAttempt] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [primaryFeedback, setPrimaryFeedback] =
-    useState<PrimaryFeedback>(null);
+  const [primaryFeedback, setPrimaryFeedback] = useState<PrimaryFeedback>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const step = setupSteps[currentStep];
@@ -1072,7 +1070,8 @@ export default function SetupPage() {
                   {draft.llm.provider === "google" && draft.llm.useVertexAi ? (
                     <>
                       <Field
-                        label="项目环境变量名"
+                        label="项目"
+                        hint="填写环境变量名"
                         error={getVisibleFieldError("llm.projectEnvKey")}
                       >
                         <input
@@ -1089,7 +1088,8 @@ export default function SetupPage() {
                         />
                       </Field>
                       <Field
-                        label="区域环境变量名"
+                        label="区域"
+                        hint="填写环境变量名"
                         error={getVisibleFieldError("llm.locationEnvKey")}
                       >
                         <input
@@ -1106,7 +1106,8 @@ export default function SetupPage() {
                         />
                       </Field>
                       <Field
-                        label="凭据环境变量名"
+                        label="凭据"
+                        hint="填写环境变量名"
                         error={getVisibleFieldError("llm.credentialsEnvKey")}
                       >
                         <input
@@ -1143,8 +1144,8 @@ export default function SetupPage() {
                         />
                       </Field>
                       <Field
-                        label="环境变量名"
-                        hint="这里只填写变量名，不直接填写密钥。"
+                        label="ApiKey"
+                        hint="填写环境变量名"
                         error={getVisibleFieldError("llm.envKey")}
                       >
                         <input
@@ -1235,7 +1236,8 @@ export default function SetupPage() {
               draft.embedding.useVertexAi ? (
                 <>
                   <Field
-                    label="项目环境变量名"
+                    label="项目"
+                    hint="填写环境变量名"
                     error={getVisibleFieldError("embedding.projectEnvKey")}
                   >
                     <input
@@ -1253,7 +1255,8 @@ export default function SetupPage() {
                     />
                   </Field>
                   <Field
-                    label="区域环境变量名"
+                    label="区域"
+                    hint="填写环境变量名"
                     error={getVisibleFieldError("embedding.locationEnvKey")}
                   >
                     <input
@@ -1271,10 +1274,9 @@ export default function SetupPage() {
                     />
                   </Field>
                   <Field
-                    label="凭据环境变量名"
-                    error={getVisibleFieldError(
-                      "embedding.credentialsEnvKey",
-                    )}
+                    label="凭据"
+                    hint="填写环境变量名"
+                    error={getVisibleFieldError("embedding.credentialsEnvKey")}
                   >
                     <input
                       value={draft.embedding.credentialsEnvKey}
@@ -1284,9 +1286,7 @@ export default function SetupPage() {
                       }
                       required
                       aria-required="true"
-                      {...getFieldControlProps(
-                        "embedding.credentialsEnvKey",
-                      )}
+                      {...getFieldControlProps("embedding.credentialsEnvKey")}
                       onChange={(event) =>
                         updateEmbedding({
                           credentialsEnvKey: event.target.value,
@@ -1315,8 +1315,8 @@ export default function SetupPage() {
                     />
                   </Field>
                   <Field
-                    label="环境变量名"
-                    hint="这里只填写变量名，不直接填写密钥。"
+                    label="ApiKey"
+                    hint="填写环境变量名"
                     error={getVisibleFieldError("embedding.envKey")}
                   >
                     <input

@@ -64,9 +64,7 @@ function toActorDeletedEvent(event: CoreEmaEvent): EmaKnownEvent | null {
   };
 }
 
-function toActorRuntimeChangedEvent(
-  event: CoreEmaEvent,
-): EmaKnownEvent | null {
+function toActorRuntimeChangedEvent(event: CoreEmaEvent): EmaKnownEvent | null {
   const status = readString(event.data, "status");
   if (!isRuntimeStatus(status)) {
     return null;

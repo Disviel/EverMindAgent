@@ -1,11 +1,22 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import * as lancedb from "@lancedb/lancedb";
+import * as nodeFs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 
-import { DBService, createMongo, type Mongo } from "..";
-import { GlobalConfig } from "../../config/index";
+import {
+  DBService,
+  createMongo,
+  getLanceDbDirectory,
+  prepareLanceDbDirectory,
+  type Mongo,
+} from "..";
+import { createBootstrapConfig, GlobalConfig } from "../../config/index";
 import { MemFs } from "../../shared/fs";
-import { loadTestGlobalConfig } from "../../config/tests/helpers";
+import {
+  createTestGlobalConfigRecord,
+  loadTestGlobalConfig,
+} from "../../config/tests/helpers";
 
 describe("DBService", () => {
   let fs: MemFs;
@@ -85,3 +96,66 @@ describe("DBService", () => {
     ]);
   });
 });
+
+describe("DBService LanceDB directory", () => {
+  let dataRoot: string;
+
+  beforeEach(async () => {
+    dataRoot = await nodeFs.mkdtemp(path.join(os.tmpdir(), "ema-lancedb-"));
+  });
+
+  afterEach(async () => {
+    GlobalConfig.resetForTests();
+    await nodeFs.rm(dataRoot, { recursive: true, force: true });
+  });
+
+  test("uses a dev LanceDB directory and resets it before connecting", async () => {
+    await loadGlobalConfigForLanceTest("dev", dataRoot);
+    const directory = getLanceDbDirectory();
+    const sentinel = path.join(directory, "sentinel.txt");
+    await nodeFs.mkdir(directory, { recursive: true });
+    await nodeFs.writeFile(sentinel, "stale", "utf8");
+
+    const result = await prepareLanceDbDirectory();
+
+    expect(result).toEqual({
+      directory,
+      reset: true,
+    });
+    await expect(nodeFs.access(sentinel)).rejects.toThrow();
+  });
+
+  test("uses a prod LanceDB directory without resetting existing data", async () => {
+    await loadGlobalConfigForLanceTest("prod", dataRoot);
+    const directory = getLanceDbDirectory();
+    const sentinel = path.join(directory, "sentinel.txt");
+    await nodeFs.mkdir(directory, { recursive: true });
+    await nodeFs.writeFile(sentinel, "keep", "utf8");
+
+    const result = await prepareLanceDbDirectory();
+
+    expect(result).toEqual({
+      directory,
+      reset: false,
+    });
+    await expect(nodeFs.readFile(sentinel, "utf8")).resolves.toBe("keep");
+  });
+});
+
+async function loadGlobalConfigForLanceTest(
+  mode: "dev" | "prod",
+  dataRoot: string,
+): Promise<void> {
+  GlobalConfig.resetForTests();
+  const fs = new MemFs();
+  await GlobalConfig.load(fs, {
+    bootstrap: createBootstrapConfig({
+      mode,
+      dataRoot,
+      ...(mode === "dev"
+        ? { mongoKind: "memory" as const }
+        : { mongoUri: "mongodb://127.0.0.1:27017" }),
+    }),
+  });
+  GlobalConfig.applyRecord(createTestGlobalConfigRecord());
+}

@@ -4,10 +4,7 @@ import type { ConversationEntity } from "../db";
 import type { Server } from "../server";
 import type { QQConversationInput } from "./types";
 
-export type QQTransportStatus =
-  | "connecting"
-  | "connected"
-  | "disconnected";
+export type QQTransportStatus = "connecting" | "connected" | "disconnected";
 
 export type QQBlockedBy = "actor_offline" | "qq_disabled" | null;
 
@@ -119,7 +116,9 @@ export class ChannelController {
     input: Omit<QQConversationInput, "type" | "uid">,
   ): Promise<ConversationEntity & { id: number }> {
     const current =
-      await this.server.dbService.conversationDB.getConversation(conversationId);
+      await this.server.dbService.conversationDB.getConversation(
+        conversationId,
+      );
     if (
       !current ||
       current.actorId !== actorId ||
@@ -152,7 +151,9 @@ export class ChannelController {
     conversationId: number,
   ): Promise<boolean> {
     const current =
-      await this.server.dbService.conversationDB.getConversation(conversationId);
+      await this.server.dbService.conversationDB.getConversation(
+        conversationId,
+      );
     if (!current || current.actorId !== actorId) {
       return false;
     }
@@ -245,7 +246,9 @@ export class ChannelController {
         allowProactive: input.allowProactive === true,
       });
     const conversation =
-      await this.server.dbService.conversationDB.getConversation(conversationId);
+      await this.server.dbService.conversationDB.getConversation(
+        conversationId,
+      );
     if (!conversation || typeof conversation.id !== "number") {
       throw new Error(`Conversation ${conversationId} not found after save.`);
     }

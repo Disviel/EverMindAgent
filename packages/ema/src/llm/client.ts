@@ -1,5 +1,5 @@
 import type { LLMClientBase } from "./base";
-import type { LLMConfig } from "../config/index";
+import { GlobalConfig, type LLMConfig } from "../config/index";
 import { GoogleClient } from "./google_client";
 import { OpenAIClient } from "./openai_client";
 import type { LLMResponse } from "../shared/schema";
@@ -16,11 +16,13 @@ export enum LLMProvider {
 /** Factory that routes calls to the provider-specific LLM client. */
 export class LLMClient {
   private readonly client: LLMClientBase;
+  readonly config: LLMConfig;
 
   constructor(
-    readonly config: LLMConfig,
+    config: LLMConfig,
     private readonly retryConfig = new RetryConfig(),
   ) {
+    this.config = GlobalConfig.resolveRuntimeLlmConfig(config);
     switch (this.config.provider) {
       case LLMProvider.GOOGLE:
         if (!this.config.google.useVertexAi && !this.config.google.apiKey) {
@@ -28,8 +30,7 @@ export class LLMClient {
         }
         if (
           this.config.google.useVertexAi &&
-          (!this.config.google.project ||
-            !this.config.google.location)
+          (!this.config.google.project || !this.config.google.location)
         ) {
           throw new Error(
             "Google Vertex AI project and location are required.",

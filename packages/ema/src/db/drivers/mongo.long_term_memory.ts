@@ -1,5 +1,5 @@
 import type {
-  LongTermMemoryDB,
+  LongTermMemoryStore,
   LongTermMemoryEntity,
   ListLongTermMemoriesRequest,
   LongTermMemorySearcher,
@@ -15,7 +15,7 @@ import { upsertEntity, deleteEntity, omitMongoId } from "../mongo/utils";
  * MongoDB-based implementation of LongTermMemoryDB
  * Stores long term memory data in a MongoDB collection
  */
-export class MongoLongTermMemoryDB implements LongTermMemoryDB {
+export class MongoLongTermMemoryDB implements LongTermMemoryStore {
   /** collection name */
   private readonly $cn = "long_term_memories";
   /**

@@ -1,8 +1,4 @@
-export type ActorRuntimeStatus =
-  | "offline"
-  | "sleep"
-  | "online"
-  | "busy";
+export type ActorRuntimeStatus = "offline" | "sleep" | "online" | "busy";
 export type ActorRuntimeTransition =
   | "booting"
   | "shutting_down"
@@ -18,6 +14,8 @@ export type ActorSettingsCheckErrorCode =
   | "UNSUPPORTED"
   | "LLM_PROVIDER_ERROR"
   | "LLM_NETWORK_ERROR"
+  | "EMBEDDING_PROVIDER_ERROR"
+  | "EMBEDDING_NETWORK_ERROR"
   | "CHECK_FAILED";
 export type ActorSettingsSaveErrorCode =
   | "INVALID_CONFIG"
@@ -108,6 +106,7 @@ export interface ActorSettingsResponse {
   settings: ActorSettingsSnapshot;
   global: {
     llm: ActorLlmConfig;
+    embedding: GlobalEmbeddingConfig;
     webSearch: ActorWebSearchConfig;
   };
 }
@@ -195,6 +194,161 @@ export interface ActorLlmSaveResponse {
       details: ActorSettingsDiagnostics;
     };
     diagnostics: ActorSettingsDiagnostics;
+  };
+}
+
+export type VectorIndexState =
+  | "not_started"
+  | "indexing"
+  | "ready"
+  | "degraded"
+  | "failed";
+
+export interface GlobalEmbeddingIndexStatus {
+  state: VectorIndexState;
+  activeFingerprint: string | null;
+  activeProvider: ActorLlmProvider | null;
+  activeModel: string | null;
+  dimensions?: number;
+  startedAt?: string;
+  finishedAt?: string;
+  totalMemories?: number;
+  indexedMemories?: number;
+  error?: string;
+}
+
+export interface GlobalEmbeddingConfig {
+  provider: "google" | "openai";
+  openai: {
+    model: string;
+    baseUrl: string;
+    apiKey: string;
+  };
+  google: {
+    model: string;
+    baseUrl: string;
+    apiKey: string;
+    useVertexAi: boolean;
+    project: string;
+    location: string;
+    credentialsFile: string;
+  };
+}
+
+export interface GlobalSettingsResponse {
+  apiVersion: "v1beta1";
+  user: DashboardUserProfile;
+  identityBindings: {
+    qq: {
+      uid: string;
+      configured: boolean;
+    };
+  };
+  services: {
+    llm: ActorLlmConfig;
+    embedding: GlobalEmbeddingConfig;
+    embeddingRestartRequired: boolean;
+    embeddingIndex: GlobalEmbeddingIndexStatus;
+  };
+}
+
+export type GlobalLlmConfig = ActorLlmConfig;
+export type GlobalEmbeddingServiceConfig = GlobalEmbeddingConfig;
+
+export interface GlobalLlmCheckRequest {
+  requestId?: string;
+  attempt?: number;
+  config: GlobalLlmConfig;
+}
+
+export interface GlobalLlmCheckResponse extends ActorLlmCheckResponse {
+  check: ActorLlmCheckResponse["check"] & {
+    actorId: "global";
+  };
+}
+
+export interface GlobalLlmSaveRequest {
+  requestId?: string;
+  config: GlobalLlmConfig;
+}
+
+export interface GlobalLlmSaveResponse extends ActorLlmSaveResponse {
+  save: ActorLlmSaveResponse["save"] & {
+    actorId: "global";
+  };
+}
+
+export interface GlobalEmbeddingCheckRequest {
+  requestId?: string;
+  attempt?: number;
+  config: GlobalEmbeddingServiceConfig;
+}
+
+export interface GlobalEmbeddingCheckResponse {
+  apiVersion: "v1beta1";
+  ok: boolean;
+  check: {
+    id: string;
+    target: "embedding";
+    actorId: "global";
+    status: ActorSettingsCheckStatus;
+    startedAt: string;
+    finishedAt: string;
+    durationMs: number;
+    error?: {
+      code: ActorSettingsCheckErrorCode;
+      retryable: boolean;
+      details: ActorSettingsDiagnostics;
+    };
+    diagnostics: ActorSettingsDiagnostics;
+  };
+}
+
+export interface GlobalEmbeddingSaveRequest {
+  requestId?: string;
+  config: GlobalEmbeddingServiceConfig;
+}
+
+export interface GlobalEmbeddingSaveResponse {
+  apiVersion: "v1beta1";
+  ok: boolean;
+  save: {
+    id: string;
+    target: "embedding";
+    actorId: "global";
+    status: ActorSettingsSaveStatus;
+    startedAt: string;
+    finishedAt: string;
+    durationMs: number;
+    error?: {
+      code: ActorSettingsSaveErrorCode;
+      retryable: boolean;
+      details: ActorSettingsDiagnostics;
+    };
+    diagnostics: ActorSettingsDiagnostics;
+  };
+  restartRequired: boolean;
+  embeddingIndex: GlobalEmbeddingIndexStatus;
+}
+
+export interface OwnerQqBindingSaveRequest {
+  requestId?: string;
+  uid: string;
+}
+
+export interface OwnerQqBindingSaveResponse {
+  apiVersion: "v1beta1";
+  ok: boolean;
+  binding: {
+    channel: "qq";
+    uid: string;
+    configured: boolean;
+    updatedAt: string;
+  };
+  error?: {
+    code: "INVALID_CONFIG" | "DATABASE_WRITE_FAILED";
+    retryable: boolean;
+    message: string;
   };
 }
 

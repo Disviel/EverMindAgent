@@ -16,7 +16,10 @@ export async function POST(request: Request) {
     .json()
     .catch(() => ({}))) as Partial<CreateActorRequest>;
   if (!body.name?.trim()) {
-    return Response.json({ message: "Actor name is required." }, { status: 400 });
+    return Response.json(
+      { message: "Actor name is required." },
+      { status: 400 },
+    );
   }
 
   try {

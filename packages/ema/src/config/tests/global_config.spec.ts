@@ -8,9 +8,7 @@ import {
   GlobalConfig,
   GlobalConfigError,
 } from "../global_config";
-import {
-  createTestGlobalConfigRecord,
-} from "./helpers";
+import { createTestGlobalConfigRecord } from "./helpers";
 
 describe("GlobalConfig", () => {
   const emptyEnv = () => undefined;
@@ -131,5 +129,76 @@ describe("GlobalConfig", () => {
 
     expect(GlobalConfig.system.httpsProxy).toBe("http://127.0.0.1:7890");
     expect(GlobalConfig.defaultLlm.google.apiKey).toBe("db-gemini-key");
+  });
+
+  test("updates runtime global config fields independently", async () => {
+    await GlobalConfig.load(new MemFs(), {
+      bootstrap: createBootstrapConfig({ mode: "dev", mongoKind: "memory" }),
+    });
+    const record = createTestGlobalConfigRecord();
+    GlobalConfig.applyRecord(record);
+
+    GlobalConfig.updateDefaultLlm({
+      ...record.defaultLlm,
+      google: {
+        ...record.defaultLlm.google,
+        apiKey: "updated-llm-key",
+      },
+    });
+    GlobalConfig.updateSystemConfig({
+      httpsProxy: "http://127.0.0.1:7890",
+    });
+
+    expect(GlobalConfig.defaultLlm.google.apiKey).toBe("updated-llm-key");
+    expect(GlobalConfig.defaultEmbedding).toEqual(record.defaultEmbedding);
+    expect(GlobalConfig.system.httpsProxy).toBe("http://127.0.0.1:7890");
+  });
+
+  test("resolves runtime provider config values without changing stored config", () => {
+    vi.stubEnv("EMA_TEST_OPENAI_KEY", "sk-resolved");
+    vi.stubEnv("EMA_TEST_VERTEX_PROJECT", "resolved-project");
+    vi.stubEnv("EMA_TEST_VERTEX_CREDENTIALS", "/tmp/vertex-key.json");
+
+    const record = createTestGlobalConfigRecord();
+    const llm = {
+      ...record.defaultLlm,
+      provider: "openai" as const,
+      openai: {
+        ...record.defaultLlm.openai,
+        apiKey: "EMA_TEST_OPENAI_KEY",
+      },
+      google: {
+        ...record.defaultLlm.google,
+        project: "EMA_TEST_VERTEX_PROJECT",
+        location: "us-central1",
+        credentialsFile: "EMA_TEST_VERTEX_CREDENTIALS",
+      },
+    };
+    const embedding = {
+      ...record.defaultEmbedding,
+      google: {
+        ...record.defaultEmbedding.google,
+        project: "MISSING_VERTEX_PROJECT",
+        credentialsFile: "GOOGLE_APPLICATION_CREDENTIALS",
+      },
+    };
+
+    expect(GlobalConfig.resolveRuntimeLlmConfig(llm).openai.apiKey).toBe(
+      "sk-resolved",
+    );
+    expect(GlobalConfig.resolveRuntimeLlmConfig(llm).google.project).toBe(
+      "resolved-project",
+    );
+    expect(
+      GlobalConfig.resolveRuntimeLlmConfig(llm).google.credentialsFile,
+    ).toBe("/tmp/vertex-key.json");
+    expect(
+      GlobalConfig.resolveRuntimeEmbeddingConfig(embedding).google.project,
+    ).toBe("");
+    expect(
+      GlobalConfig.resolveRuntimeEmbeddingConfig(embedding).google
+        .credentialsFile,
+    ).toBe("");
+    expect(llm.openai.apiKey).toBe("EMA_TEST_OPENAI_KEY");
   });
 });

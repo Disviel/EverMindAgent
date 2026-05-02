@@ -369,9 +369,7 @@ export function buildDryRunResponse(draft: SetupDraft): SetupDryRunResponse {
           ? draft.embedding.projectEnvKey
           : draft.embedding.envKey,
         draft.embedding.useVertexAi ? draft.embedding.locationEnvKey : null,
-        draft.embedding.useVertexAi
-          ? draft.embedding.credentialsEnvKey
-          : null,
+        draft.embedding.useVertexAi ? draft.embedding.credentialsEnvKey : null,
       ]
         .filter((value): value is string => Boolean(value))
         .map((value) => value.trim())
@@ -480,15 +478,32 @@ function buildGlobalConfigRecord(draft: SetupDraft): GlobalConfigRecord {
   };
 }
 
+export function buildLlmConfigFromSetupInput(
+  config: SetupDraft["llm"],
+): LLMConfig {
+  return buildLlmConfig({
+    ...initialDraft,
+    llm: config,
+  });
+}
+
+export function buildEmbeddingConfigFromSetupInput(
+  config: SetupDraft["embedding"],
+): EmbeddingConfig {
+  return buildEmbeddingConfig({
+    ...initialDraft,
+    embedding: config,
+  });
+}
+
 function buildLlmConfig(draft: SetupDraft): LLMConfig {
   return {
     provider: draft.llm.provider === "openai" ? "openai" : "google",
     openai: {
       mode: draft.llm.mode,
       model: draft.llm.provider === "openai" ? draft.llm.model.trim() : "",
-      baseUrl:
-        draft.llm.provider === "openai" ? draft.llm.baseUrl.trim() : "",
-      apiKey: draft.llm.provider === "openai" ? resolveSecret(draft.llm.envKey) : "",
+      baseUrl: draft.llm.provider === "openai" ? draft.llm.baseUrl.trim() : "",
+      apiKey: draft.llm.provider === "openai" ? draft.llm.envKey.trim() : "",
     },
     google: {
       model: draft.llm.provider === "google" ? draft.llm.model.trim() : "",
@@ -498,20 +513,20 @@ function buildLlmConfig(draft: SetupDraft): LLMConfig {
           : "",
       apiKey:
         draft.llm.provider === "google" && !draft.llm.useVertexAi
-          ? resolveSecret(draft.llm.envKey)
+          ? draft.llm.envKey.trim()
           : "",
       useVertexAi: draft.llm.provider === "google" && draft.llm.useVertexAi,
       project:
         draft.llm.provider === "google" && draft.llm.useVertexAi
-          ? resolveSecret(draft.llm.projectEnvKey)
+          ? draft.llm.projectEnvKey.trim()
           : "",
       location:
         draft.llm.provider === "google" && draft.llm.useVertexAi
-          ? resolveSecret(draft.llm.locationEnvKey)
+          ? draft.llm.locationEnvKey.trim()
           : "",
       credentialsFile:
         draft.llm.provider === "google" && draft.llm.useVertexAi
-          ? resolveSecret(draft.llm.credentialsEnvKey)
+          ? draft.llm.credentialsEnvKey.trim()
           : "",
     },
   };
@@ -522,46 +537,45 @@ function buildEmbeddingConfig(draft: SetupDraft): EmbeddingConfig {
     provider: draft.embedding.provider,
     openai: {
       model:
-        draft.embedding.provider === "openai" ? draft.embedding.model.trim() : "",
+        draft.embedding.provider === "openai"
+          ? draft.embedding.model.trim()
+          : "",
       baseUrl:
         draft.embedding.provider === "openai"
           ? draft.embedding.baseUrl.trim()
           : "",
       apiKey:
         draft.embedding.provider === "openai"
-          ? resolveSecret(draft.embedding.envKey)
+          ? draft.embedding.envKey.trim()
           : "",
     },
     google: {
       model:
-        draft.embedding.provider === "google" ? draft.embedding.model.trim() : "",
+        draft.embedding.provider === "google"
+          ? draft.embedding.model.trim()
+          : "",
       baseUrl:
         draft.embedding.provider === "google" && !draft.embedding.useVertexAi
           ? draft.embedding.baseUrl.trim()
           : "",
       apiKey:
         draft.embedding.provider === "google" && !draft.embedding.useVertexAi
-          ? resolveSecret(draft.embedding.envKey)
+          ? draft.embedding.envKey.trim()
           : "",
       useVertexAi:
         draft.embedding.provider === "google" && draft.embedding.useVertexAi,
       project:
         draft.embedding.provider === "google" && draft.embedding.useVertexAi
-          ? resolveSecret(draft.embedding.projectEnvKey)
+          ? draft.embedding.projectEnvKey.trim()
           : "",
       location:
         draft.embedding.provider === "google" && draft.embedding.useVertexAi
-          ? resolveSecret(draft.embedding.locationEnvKey)
+          ? draft.embedding.locationEnvKey.trim()
           : "",
       credentialsFile:
         draft.embedding.provider === "google" && draft.embedding.useVertexAi
-          ? resolveSecret(draft.embedding.credentialsEnvKey)
+          ? draft.embedding.credentialsEnvKey.trim()
           : "",
     },
   };
-}
-
-function resolveSecret(envKey: string): string {
-  const key = envKey.trim();
-  return process.env[key]?.trim() ?? "";
 }

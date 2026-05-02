@@ -4,10 +4,14 @@ import {
   resolveSession,
   type ChannelConfig,
   type EffectiveActorSettings,
+  type EmbeddingConfig,
   type LLMConfig,
+  type VectorIndexStatus,
   type WebSearchConfig,
 } from "ema";
 import type {
+  GlobalEmbeddingIndexStatus,
+  GlobalEmbeddingConfig,
   ActorQQBlockedBy,
   ActorLlmConfig,
   ActorQQConfig,
@@ -42,6 +46,55 @@ export function toWebLlmConfig(config: LLMConfig): ActorLlmConfig {
       location: config.google.location,
       credentialsFile: config.google.credentialsFile,
     },
+  };
+}
+
+export function toWebEmbeddingConfig(
+  config: EmbeddingConfig,
+): GlobalEmbeddingConfig {
+  return {
+    provider: config.provider,
+    openai: {
+      model: config.openai.model,
+      baseUrl: config.openai.baseUrl,
+      apiKey: config.openai.apiKey,
+    },
+    google: {
+      model: config.google.model,
+      baseUrl: config.google.baseUrl,
+      apiKey: config.google.apiKey,
+      useVertexAi: config.google.useVertexAi,
+      project: config.google.project,
+      location: config.google.location,
+      credentialsFile: config.google.credentialsFile,
+    },
+  };
+}
+
+export function toWebEmbeddingIndexStatus(
+  status: VectorIndexStatus,
+): GlobalEmbeddingIndexStatus {
+  return {
+    state: status.state,
+    activeFingerprint: status.activeFingerprint,
+    activeProvider: status.activeProvider,
+    activeModel: status.activeModel,
+    ...(typeof status.dimensions === "number"
+      ? { dimensions: status.dimensions }
+      : {}),
+    ...(typeof status.startedAt === "number"
+      ? { startedAt: new Date(status.startedAt).toISOString() }
+      : {}),
+    ...(typeof status.finishedAt === "number"
+      ? { finishedAt: new Date(status.finishedAt).toISOString() }
+      : {}),
+    ...(typeof status.totalMemories === "number"
+      ? { totalMemories: status.totalMemories }
+      : {}),
+    ...(typeof status.indexedMemories === "number"
+      ? { indexedMemories: status.indexedMemories }
+      : {}),
+    ...(status.error ? { error: status.error } : {}),
   };
 }
 
@@ -102,9 +155,7 @@ export function toWebSettings(
   };
 }
 
-export function toWebQqTransportStatus(
-  status: string,
-): ActorQQTransportStatus {
+export function toWebQqTransportStatus(status: string): ActorQQTransportStatus {
   if (
     status === "connecting" ||
     status === "connected" ||

@@ -23,25 +23,39 @@ export class EmbeddingClient {
   private readonly googleClient?: GoogleGenAI;
   private readonly openaiClient?: OpenAI;
   private readonly model: string;
+  private readonly config: EmbeddingConfig;
 
-  constructor(private readonly config: EmbeddingConfig) {
-    if (config.provider === "google") {
-      this.model = config.google.model;
+  constructor(config: EmbeddingConfig) {
+    this.config = GlobalConfig.resolveRuntimeEmbeddingConfig(config);
+    if (this.config.provider === "google") {
+      if (!this.config.google.model) {
+        throw new Error("Google embedding model is required.");
+      }
+      if (
+        this.config.google.useVertexAi &&
+        (!this.config.google.project || !this.config.google.location)
+      ) {
+        throw new Error("Google Vertex AI project and location are required.");
+      }
+      if (!this.config.google.useVertexAi && !this.config.google.apiKey) {
+        throw new Error("Google API key is required.");
+      }
+      this.model = this.config.google.model;
       const googleAIOptions: GoogleGenAIOptions = {
         apiVersion: GOOGLE_AI_API_VERSION,
         vertexai: false,
-        apiKey: config.google.apiKey,
+        apiKey: this.config.google.apiKey,
       };
       if (
-        config.google.baseUrl &&
-        config.google.baseUrl !== DEFAULT_GOOGLE_BASE_URL
+        this.config.google.baseUrl &&
+        this.config.google.baseUrl !== DEFAULT_GOOGLE_BASE_URL
       ) {
         googleAIOptions.httpOptions = {
-          baseUrl: config.google.baseUrl,
+          baseUrl: this.config.google.baseUrl,
         };
       }
-      const options = config.google.useVertexAi
-        ? buildGoogleVertexAIOptions(config.google)
+      const options = this.config.google.useVertexAi
+        ? buildGoogleVertexAIOptions(this.config.google)
         : googleAIOptions;
       this.googleClient = new GenAI(
         options,
@@ -50,10 +64,13 @@ export class EmbeddingClient {
       return;
     }
 
-    this.model = config.openai.model;
+    this.model = this.config.openai.model;
+    if (!this.model || !this.config.openai.apiKey) {
+      throw new Error("OpenAI embedding model and API key are required.");
+    }
     this.openaiClient = new OpenAI({
-      apiKey: config.openai.apiKey,
-      baseURL: config.openai.baseUrl,
+      apiKey: this.config.openai.apiKey,
+      baseURL: this.config.openai.baseUrl,
       fetch: new FetchWithProxy(GlobalConfig.system.httpsProxy).createFetcher(),
     });
   }
@@ -80,7 +97,9 @@ export class EmbeddingClient {
     }
 
     if (!this.openaiClient) {
-      throw new Error(`Unsupported embedding provider: ${this.config.provider}`);
+      throw new Error(
+        `Unsupported embedding provider: ${this.config.provider}`,
+      );
     }
     const response = await this.openaiClient.embeddings.create({
       model: this.model,

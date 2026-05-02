@@ -22,8 +22,7 @@ export async function GET(
       coreActorId,
       session,
     );
-  const initialTypingEvent =
-    toConversationTypingChangedEvent(typingSnapshot);
+  const initialTypingEvent = toConversationTypingChangedEvent(typingSnapshot);
 
   return sseResponse(
     createSubscribedSseStream({
